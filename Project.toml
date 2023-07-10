@@ -1,0 +1,4 @@
+name = "EEScattering2D"
+uuid = "c6a41c15-d88e-48c8-8949-9ce5da133acd"
+authors = ["Davis Thuillier <dsthuillier@gmail.com>"]
+version = "0.1.0"
