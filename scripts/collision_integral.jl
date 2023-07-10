@@ -8,7 +8,6 @@ import StaticArrays: SVector
 include("params/gamma.jl")
 
 function main()
-    
 end
 
 main()
