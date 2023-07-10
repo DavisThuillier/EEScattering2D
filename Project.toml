@@ -2,3 +2,7 @@ name = "EEScattering2D"
 uuid = "c6a41c15-d88e-48c8-8949-9ce5da133acd"
 authors = ["Davis Thuillier <dsthuillier@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
