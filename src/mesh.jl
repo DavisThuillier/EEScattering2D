@@ -4,6 +4,10 @@ module FermiSurfaceMesh
     export fill_fermi_surface!, fill_fermi_velocity!, discretize
 
     import StaticArrays: SVector
+    import LinearAlgebra: norm
+    import Statistics: median, mean
+    import SpecialFunctions: erfinv, erf
+    using ProgressBars
 
     ## Collinear width parameters ##
     const max_width::Float64 = 0.4 # Maximum width of collinear region in radians
@@ -27,7 +31,7 @@ module FermiSurfaceMesh
         return N / (sqrt(pi) * sigma * erf(log(1/ratio)) / 2 + (endpoint - sigma * log(1/ratio)) * ratio)
     end
 
-    function get_energy_root(startpoint::SVector{2, Float64}, endpoint::SVector{2, Float64}, hamiltonian::Function, level::Float64 = 0.0)
+    function get_energy_root(startpoint::SVector{2, Float64}, endpoint::SVector{2, Float64}, hamiltonian::Function; tolerance::Float64 = 0.0001, max_iterations::Int = 10000, level::Float64 = 0.0)
         delta_E::Float64 = 0.0
         n = endpoint - startpoint
         n = n / norm(n)
@@ -52,7 +56,7 @@ module FermiSurfaceMesh
         return (startpoint + endpoint) / 2
     end
 
-    function fill_fermi_surface!(fermi_surface::Vector{SVector{2, Float64}}, angles::Vector{Float64})
+    function fill_fermi_surface!(fermi_surface::Vector{SVector{2, Float64}}, angles::Vector{Float64}, hamiltonian::Function)
         startpoint::SVector{2, Float64} = [0.0, 0.0]
 
         ## Compute roots of the Hamiltonian using the bisection method ##
@@ -64,7 +68,7 @@ module FermiSurfaceMesh
             else
                 endpoint   = sqrt(1 + cos(angles[i])^2) * n
             end
-            fermi_surface[i] = get_energy_root(startpoint, endpoint, hamiltonian, 0.0)
+            fermi_surface[i] = get_energy_root(startpoint, endpoint, hamiltonian, level = 0.0)
         end
 
         return nothing
@@ -114,9 +118,9 @@ module FermiSurfaceMesh
         k::Vector{Float64} = [0.0,0.0]
 
         extend_domain = (central_angle + pi >= 2*pi)
-        while (theta < pi/2 + central_angle) && i < length(t)
+        while (theta < pi/2 + central_angle)
             s += 1 / gaussian_density(s, sigma, amp, limit_ratio)
-            while s > t[i]
+            while i < length(t) && s > t[i]
                 i += 1
             end
             k = centered_fs[i - 1] + ( (s - t[i - 1]) / (t[i] - t[i-1])) * (centered_fs[i] - centered_fs[i - 1])
@@ -147,7 +151,7 @@ module FermiSurfaceMesh
         return vcat(angles, pi .+ reverse(angles_r), pi .+ angles, reverse(angles_r))
     end
 
-    function get_k_bound(e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64})
+    function get_k_bound(hamiltonian::Function, e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64}, max_iterations = 10000, tolerance = 0.0001)
         n = velocity / norm(velocity)
         step = (e_bound / norm(velocity)) / 2
 
@@ -194,18 +198,17 @@ module FermiSurfaceMesh
         return k_bound
     end
 
-    function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, T::Float64)
-        e_max::Float64 = 2  * T * acosh(1 / (2 * sqrt(prec)))
+    function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, hamiltonian::Function, perp_num::Int, T::Float64, precision::Float64)
+        e_max::Float64 = 2  * T * acosh(1 / (2 * sqrt(precision)))
 
-        momenta = Matrix{SVector{2, Float64}}(undef, p_num, length(fermi_surface))
+        momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
-        for i in eachindex(fermi_surface)
-            # p_max = get_k_bound(e_max, n, fermi_surface[i], step)
-            p_min = get_k_bound(-e_max, fermi_surface[i], fermi_velocity[i])
-            p_max = get_k_bound(e_max, fermi_surface[i], fermi_velocity[i])
+        for i in ProgressBar(eachindex(fermi_surface))
+            p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i])
+            p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i])
 
-            for j in 1:p_num # 2 additional points correspond to boundary contours of ring
-                @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (p_num - 1)
+            for j in 1:perp_num # 2 additional points correspond to boundary contours of ring
+                @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
             end
         end
 
@@ -220,17 +223,17 @@ module FermiSurfaceMesh
         indices::Vector{Tuple{Int, Int}}
     end
 
-    function discretize(fermi_surface::Vector{SVector{2, Float64}}, injection_index::Int, T::Float64)
+    function discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001)
         colin_width::Float64 = collinear_width(T)
-        angles = mod2pi.( get_angles(fermi_surface, injection_index, num_angles, colin_width / (2 * sqrt(2 * log(2)))) ) # Get new angles on which to discretize
+        angles = mod2pi.( get_angles(fermi_surface, injection_index, num_bins, colin_width / (2 * sqrt(2 * log(2)))) ) # Get new angles on which to discretize
 
         new_fs = Vector{SVector{2, Float64}}(undef, length(angles))
         new_fv = Vector{SVector{2, Float64}}(undef, length(angles))
-        fill_fermi_surface!(new_fs, angles)
+        fill_fermi_surface!(new_fs, angles, hamiltonian)
         fill_fermi_velocity!(new_fv, new_fs, hamiltonian)
 
-        dV      = zeros(Float64, p_num, length(new_fs))
-        momenta = temperature_broaden(new_fs, new_fv, T)
+        dV      = zeros(Float64, perp_num, length(new_fs))
+        momenta = temperature_broaden(new_fs, new_fv, hamiltonian, perp_num, T, precision)
         
         angle_bins = Vector{Bin}(undef, length(angles))
         for i in eachindex(angles)

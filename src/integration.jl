@@ -72,7 +72,7 @@ module Integration
         central_momenta::Vector{SVector{2, Float64}} = map((x) -> momenta[x[1], x[2]], bins[1].indices)
         central_dp::Vector{Float64} = get_dp(momenta, bins[1])
         
-        for i in ProgressBar(eachindex(bins))
+        for i in eachindex(bins)
             dp = get_dp(momenta, bins[i])
             integral = SVector{2}([0.0, 0.0])
             for m in eachindex(bins[i].indices)
@@ -95,5 +95,5 @@ module Integration
         reduced_mat[end, :] = [6*pi, 0.0, 0.0] # Will be sorted as the final element
         return nothing
     end
-    
+
 end
