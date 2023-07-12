@@ -56,6 +56,53 @@ module FermiSurfaceMesh
         return (startpoint + endpoint) / 2
     end
 
+    function generate_fermi_surface(hamiltonian::Function, num_points::Int)
+        angles = collect(range(0.0, 2*pi, num_points * 10))
+
+        startpoint = SVector{2}([0.0, 0.0])
+        center_energy::Float64 = hamiltonian(startpoint)
+        old_energy::Float64 = 0.0
+        energy::Float64 = 0.0
+
+        fermi_surface = Vector{SVector{2,Float64}}(undef, 0)
+
+        for theta in angles
+            old_energy = center_energy
+            n = SVector{2}([cos(theta), sin(theta)])
+            if 0.0 <= theta < pi / 4 || 3pi / 4 < theta < 5pi / 4 || 7pi / 4 < theta <= 2pi
+                endpoint   = sqrt(1 + sin(theta)^2) * n
+            else
+                endpoint   = sqrt(1 + cos(theta)^2) * n
+            end
+            for i in 1:num_points
+                energy = hamiltonian( i / num_points * endpoint)
+                if sign(energy) != sign(old_energy)
+                    push!(fermi_surface, get_energy_root(startpoint, i / num_points * endpoint, hamiltonian))
+                end
+            end
+        end
+
+        s = get_arclengths(fermi_surface)
+
+        step::Float64 = last(s) / num_points
+
+        uniform_fermi_surface = Vector{SVector{2, Float64}}(undef, num_points)
+        uniform_fermi_surface[1] = fermi_surface[1]
+
+        for i in 2:num_points
+            t = step * (i - 1)
+            j::Int = 1
+            while t > s[j]
+                j += 1
+            end
+
+            k = fermi_surface[j - 1] + ( (t - s[j - 1]) / (s[j] - s[j-1])) * (fermi_surface[j] - fermi_surface[j - 1])
+            uniform_fermi_surface[i] = k
+        end
+
+        return uniform_fermi_surface
+    end
+
     function fill_fermi_surface!(fermi_surface::Vector{SVector{2, Float64}}, angles::Vector{Float64}, hamiltonian::Function)
         startpoint::SVector{2, Float64} = [0.0, 0.0]
 
@@ -63,11 +110,12 @@ module FermiSurfaceMesh
         for i in eachindex(angles)
             n = SVector{2}([cos(angles[i]), sin(angles[i])])
             endpoint = 2.0 * n 
-            if - pi / 4 < angles[i] < pi / 4 || 3 * pi / 4 < angles[i] < 5 * pi / 4
+            if 0.0 <= angles[i] < pi / 4 || 3pi / 4 < angles[i] < 5pi / 4 || 7pi / 4 < angles[i] <= 2pi
                 endpoint   = sqrt(1 + sin(angles[i])^2) * n
             else
                 endpoint   = sqrt(1 + cos(angles[i])^2) * n
             end
+            
             fermi_surface[i] = get_energy_root(startpoint, endpoint, hamiltonian, level = 0.0)
         end
 
@@ -89,22 +137,34 @@ module FermiSurfaceMesh
     end
 
     function get_arclengths(curve::Vector{SVector{2, Float64}})
-        arc_lengths = Vector{Float64}(undef, length(curve))
-        arc_lengths[1] = 0.0
+        arclengths = Vector{Float64}(undef, length(curve))
+        arclengths[1] = 0.0
 
         for i in 2:length(curve)
-            arc_lengths[i] = arc_lengths[i - 1] + norm(curve[i] - curve[i - 1])
+            arclengths[i] = arclengths[i - 1] + norm(curve[i] - curve[i - 1])
         end
 
-        return arc_lengths
+        return arclengths # , last(arclengths) + norm(last(curve) - first(curve))
+    end
+
+    "Perimeter assuming curve is open using a straight line between the first and last points for closure"
+    function get_perimeter(curve::Vector{SVector{2, Float64}})
+        perimeter::Float64 = 0.0
+        num_points::Int = lastindex(curve)
+        for i in eachindex(curve)
+            i < num_points ? (perimeter += norm(curve[i+1] - curve[i])) : (perimeter += norm(first(curve) - last(curve)))
+        end
+        return perimeter
     end
 
     function get_angles(fermi_surface::Vector{SVector{2, Float64}}, injection_index::Int, num_angles::Int, sigma::Float64)
         centered_fs = circshift(fermi_surface, 1 - injection_index) # Make the injection angle the first element of the array
         centered_fs_r = circshift(reverse(centered_fs), 1)
-        t = get_arclengths(centered_fs) # Compute arc_lengths from the central angle
+        t = get_arclengths(centered_fs) # Compute arclengths from the central angle
         t_r = get_arclengths(centered_fs_r)
-        sigma = sigma * t[end] / (2*pi) # Scale width of the peak by total arclength compared to unit circle
+        perimeter = get_perimeter(fermi_surface)
+
+        sigma = sigma * perimeter / (2*pi) # Scale width of the peak by total arclength compared to unit circle
         central_angle = mod(atan(centered_fs[1][2], centered_fs[1][1]), 2 *pi)
         angles::Vector{Float64} = [central_angle]
         angles_r::Vector{Float64} = []
@@ -120,7 +180,7 @@ module FermiSurfaceMesh
         extend_domain = (central_angle + pi >= 2*pi)
         while (theta < pi/2 + central_angle)
             s += 1 / gaussian_density(s, sigma, amp, limit_ratio)
-            while i < length(t) && s > t[i]
+            while s > t[i]
                 i += 1
             end
             k = centered_fs[i - 1] + ( (s - t[i - 1]) / (t[i] - t[i-1])) * (centered_fs[i] - centered_fs[i - 1])
@@ -128,6 +188,7 @@ module FermiSurfaceMesh
             extend_domain && ((theta <= pi) && (theta += 2*pi)) 
             (theta < pi/2 + central_angle) && push!(angles, theta)
         end
+        push!(angles, pi/2 + central_angle)
 
         s = 0.0
         i = 1
@@ -144,9 +205,6 @@ module FermiSurfaceMesh
 
             theta > (central_angle - pi/2) && push!(angles_r, theta)
         end
-
-        (length(angles_r) > num_angles / 2) && err("Discretization error: too many angles.")
-        (length(angles) > num_angles / 2) && err("Discretization error: too many angles.")
 
         return vcat(angles, pi .+ reverse(angles_r), pi .+ angles, reverse(angles_r))
     end
@@ -203,7 +261,7 @@ module FermiSurfaceMesh
 
         momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
-        for i in ProgressBar(eachindex(fermi_surface))
+        for i in eachindex(fermi_surface)
             p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i])
             p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i])
 
@@ -217,13 +275,43 @@ module FermiSurfaceMesh
 
     area(v::SVector{2, Float64}, u::SVector{2, Float64}) = abs(v[1] * u[2] - v[2] * u[1]) # Area in the plane spanned by 2-vectors
 
+    function discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001)
+        colin_width::Float64 = collinear_width(T)
+        
+        angles = mod2pi.( get_angles(fermi_surface, injection_index, num_bins, colin_width / (2 * sqrt(2 * log(2)))) ) # Get new angles on which to discretize
+
+        arclengths = get_arclengths(fermi_surface)
+
+        new_fs = Vector{SVector{2, Float64}}(undef, length(angles))
+        new_fv = Vector{SVector{2, Float64}}(undef, length(angles))
+        fill_fermi_surface!(new_fs, angles, hamiltonian)
+        fill_fermi_velocity!(new_fv, new_fs, hamiltonian)
+
+        dVs     = zeros(Float64, perp_num, length(new_fs))
+        momenta = temperature_broaden(new_fs, new_fv, hamiltonian, perp_num, T, precision)
+
+        for i in 2:(size(momenta)[1] - 1) # Ignore boundary contours
+            for j in 1:size(momenta)[2]
+                dVs[i,j] = area((momenta[i + 1, j] - momenta[i - 1, j])/ 2, (momenta[i, mod(j, length(new_fs)) + 1] - momenta[i, mod(j - 2, length(new_fs)) + 1]) / 2)
+            end
+        end
+
+        variance = median(dVs) / 4 # Approximate minimal width squared for delta function normalization
+
+        return momenta, dVs, variance, arclengths[injection_index] .+ get_arclengths(new_fs)
+    end
+
+    #####################
+    ### Old Functions ###
+    #####################
+
     # Stores the indices in the momentum array associated to a given angle
     struct Bin
         angle::Float64 
         indices::Vector{Tuple{Int, Int}}
     end
 
-    function discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001)
+    function discretize_old(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001)
         colin_width::Float64 = collinear_width(T)
         angles = mod2pi.( get_angles(fermi_surface, injection_index, num_bins, colin_width / (2 * sqrt(2 * log(2)))) ) # Get new angles on which to discretize
 
@@ -258,5 +346,4 @@ module FermiSurfaceMesh
 
         return momenta, dV, angle_bins, variance
     end
-
 end

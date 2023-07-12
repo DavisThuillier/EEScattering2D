@@ -38,16 +38,18 @@ end
 
 function main()
     band = "gamma"
-    resolution = "200_30"
+    resolution = "175_25"
     matrix_dim = 800
     temperature = 0.04
-
-    dtheta = 2*pi / matrix_dim
-    thetas = collect(range(0.0, 2 * pi, step = dtheta))
+    run = "2023.07.12(1)"
     
-    data_dir = joinpath(@__DIR__, "data", band, resolution)
+    data_dir = joinpath(@__DIR__, "data", band, resolution, run)
     fs = CSV.read(joinpath(data_dir, "fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
     fs_norms = sqrt.(fs.kx .^ 2 + fs.ky .^2)
+
+    arclengths = FermiSurfaceMesh.get_arclengths(fs)
+    perimeter  = FermiSurfaceMesh.get_perimeter(fs)
+    thetas     = map(x -> mod2pi.(atan(x[2], x[1])), fs)
 
     n_stem = joinpath(data_dir, "Γn_$(matrix_dim)_$(temperature)")
     u_stem = joinpath(data_dir, "Γu_$(matrix_dim)_$(temperature)")
@@ -149,27 +151,6 @@ function main()
         # # plot!(plt2, thetas, fs_norms .+ cos.((2 * i - 1) * thetas))
         # display(plt2)
     end
-
-    # plt2 = plot(thetas, fs_norms .+ scale * real.(eigenvecs[:,1598]), proj = :polar)
-    # plot!(plt2, thetas, fs_norms .+ scale * imag.(eigenvecs[:,1598]))
-    # plot!(plt2, thetas, fs_norms)
-    # display(plt2)
-
-    # plt3 = plot(thetas, fs_norms .+ 0.25 * cos.(thetas), proj = :polar)
-    # display(plt3)
-    # for i in matrix_dim:-1:(matrix_dim - 5)
-        # println("Eigenvalue ", 1600 - i, ": ", eigenvalues[i])
-        
-
-        # plot!(plt, thetas, fs_norms + scale * eigenvecs[:, i], proj = :polar, label = "$(count)")
-            # count += 1
-        # if abs(eigenvalues[i] - eigenvalues[i - 1]) > 0.0001
-            
-            
-        # end
-    # end
-    # plot!(plt, thetas, fs_norms, color = :black, title = latexstring("Eigenmodes of the \$\\gamma\$ Band"), label = "Fermi Surface")
-    # display(plt)
 
 end
 
