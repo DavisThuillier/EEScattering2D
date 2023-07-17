@@ -7,9 +7,9 @@ import LinearAlgebra: norm
 
 function main()
     fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim)
-    momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, 0 + 1, hamiltonian, temperature, prec)
+    momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, 1, hamiltonian, temperature, prec)
 
-    plt = plot(first.(momenta), last.(momenta), aspectratio = 1.0, seriestype = :scatter, markershape= :cross, markersize = 0.1, color = :green, legend = false)
+    plt = plot(first.(momenta), last.(momenta), aspectratio = 1.0, seriestype = :scatter, markershape= :cross, markersize = 0.1, color = :black, legend = false)
     display(plt)
 end
 

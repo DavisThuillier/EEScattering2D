@@ -74,11 +74,14 @@ module FermiSurfaceMesh
             else
                 endpoint   = sqrt(1 + cos(theta)^2) * n
             end
+
             for i in 1:num_points
                 energy = hamiltonian( i / num_points * endpoint)
                 if sign(energy) != sign(old_energy)
                     push!(fermi_surface, get_energy_root(startpoint, i / num_points * endpoint, hamiltonian))
+                    break
                 end
+                old_energy = energy
             end
         end
 
@@ -140,11 +143,11 @@ module FermiSurfaceMesh
         arclengths = Vector{Float64}(undef, length(curve))
         arclengths[1] = 0.0
 
-        for i in 2:length(curve)
-            arclengths[i] = arclengths[i - 1] + norm(curve[i] - curve[i - 1])
+        for i in eachindex(curve)
+            i == 1 || (arclengths[i] = arclengths[i - 1] + norm(curve[i] - curve[i - 1]) )
         end
 
-        return arclengths # , last(arclengths) + norm(last(curve) - first(curve))
+        return arclengths
     end
 
     "Perimeter assuming curve is open using a straight line between the first and last points for closure"
@@ -155,6 +158,19 @@ module FermiSurfaceMesh
             i < num_points ? (perimeter += norm(curve[i+1] - curve[i])) : (perimeter += norm(first(curve) - last(curve)))
         end
         return perimeter
+    end
+
+    function get_ds(curve::Vector{SVector{2, Float64}})
+        ds = Vector{Float64}(undef, length(curve))
+        if length(curve) > 1
+            for i in eachindex(curve)
+                ds[i] = 0.5 * ( norm(curve[mod(i, length(curve)) + 1] - curve[i]) + norm(curve[i] - curve[mod(i-2, length(curve)) + 1]))
+            end
+        else
+            println("Curve must consist of at least two points.")
+            exit()
+        end
+        return ds
     end
 
     function get_angles(fermi_surface::Vector{SVector{2, Float64}}, injection_index::Int, num_angles::Int, sigma::Float64)

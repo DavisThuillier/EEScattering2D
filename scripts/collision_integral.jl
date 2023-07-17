@@ -46,7 +46,7 @@ function main(start_index::Int, end_index::Int)
         FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
 
     open(joinpath(data_dir, "fermi_surface_$(length(fs)).csv"), "w") do file
-        println(file, "kx,ky,dh/dx,dh/dy")
+        println(file, "kx,ky,vx,vy")
         writedlm(file, hcat(first.(fs), last.(fs), first.(fv), last.(fv)), ",")
     end
 
@@ -54,7 +54,7 @@ function main(start_index::Int, end_index::Int)
     perimeter = FermiSurfaceMesh.get_perimeter(fs)
 
     for i in ProgressBar(start_index:end_index)
-        @time momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, i, hamiltonian, temperature, prec)
+        momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, i, hamiltonian, temperature, prec)
 
         plt = plot(first.(momenta), last.(momenta), seriestype= :scatter, markersize= 0.05, legend = false, markershape = :diamond, aspect_ratio = :equal, title = "T = $(round(temperature, digits = 4))", xlims = (-2.0,2.0), ylims = (-2.0,2.0))
         plot!(plt, first.(fs), last.(fs), color = :blue)
