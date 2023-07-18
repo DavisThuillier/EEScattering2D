@@ -9,7 +9,7 @@ using LaTeXStrings
 import StaticArrays: SVector
 import Statistics: mean
 
-function mirror_symmetrize(basis::Vector{Vector{ComplexF64}}, mirror_index::Int)
+function mirror_symmetrize(basis::Union{Vector{Vector{ComplexF64}}, Vector{Vector{Float64}}}, mirror_index::Int)
     mirror_mat = Matrix{ComplexF64}(undef, 2, 2)
     for i in 1:2
         for j in 1:2
@@ -42,10 +42,10 @@ end
 
 function main()
     band::String = "gamma"
-    resolution::String = "120_25"
+    resolution::String = "100_20"
     matrix_dim::Int = 800
     temperature::Float64 = 0.01
-    run::String = "2023.07.13"
+    run::String = "2023.07.17(2)"
 
     data_dir = joinpath(@__DIR__, "..", "data", band, resolution, run)
     filename::String = joinpath(data_dir, "Γ_full_$(matrix_dim)_$(temperature).csv")
@@ -53,6 +53,7 @@ function main()
     if isfile(filename)
         full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
         fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
+        @show norm(full_matrix' - full_matrix)
         
         fs = SVector{2}.(fermi.kx, fermi.ky)
         fs_norms = norm.(fs)
@@ -61,10 +62,13 @@ function main()
 
         lambdas = reverse(eigvals(full_matrix))
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
-        display(plot(0:40, real.(lambdas[1:40]), color = :green, seriestype = :scatter))
+
+        n = 40
+        display(plot(0:n, real.(lambdas[1:n]), color = :green, seriestype = :scatter))
 
     else
         println("Data file of full collision matrix does not exist.")
+        return nothing
     end
     
     scale = 1.0
@@ -76,12 +80,14 @@ function main()
 
     i = 1
     while i < 20
+        println("Eigenvector ", i)
         if abs(real(lambdas[i + 1]) - real(lambdas[i])) < 1e-6
-            w1, _ = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
+            w1, w2 = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
             i += 1
-            println("Symmetrized!")
         else
+            println("Single")
             w1 = eigenvecs[:, i] / norm(eigenvecs[:, i])
+            w2 = w1
         end
 
         # normal_contribution = dot(w1, n_matrix * w1) / dot(w1, full_matrix * w1)
@@ -95,16 +101,19 @@ function main()
         maxima_index = 0
         for j in 0:20
             contribution = abs(fft(w1, j))
+            println("m = ", j, ": ", round(contribution, digits = 5))
             if contribution > maximal_contribution
                 maximal_contribution = contribution
                 maxima_index = j
             end
         end
         println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maxima_index)
+        println()
 
 
-        plt = plot(thetas, scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) \$"))
-        #plot!(plt, thetas, fs_norms, color = :black)
+        plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) \$"))
+        plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
+        plot!(plt, thetas, fs_norms, color = :green)
         display(plt)
         i += 1
     end

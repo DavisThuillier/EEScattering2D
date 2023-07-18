@@ -13,7 +13,8 @@ using DelimitedFiles
 using ProgressBars
 
 function create_files(start_index::Int, end_index::Int)
-    data_dir_stem = joinpath(@__DIR__, "..", "data", band, "$(num_bins)_$(perp_num)", Dates.format(Dates.now(), "yyyy.mm.dd"))
+    umklapp ? mit_umklapp = "umklapp" : mit_umklapp = "ohne_umklapp" 
+    data_dir_stem = joinpath(@__DIR__, "..", "data", band, "$(num_bins)_$(perp_num)", mit_umklapp, Dates.format(Dates.now(), "yyyy.mm.dd"))
     data_dir = data_dir_stem
 
     filenames = map( x -> "Γ" * x * "_$(row_dim)_$(round(temperature, digits = 4))_$(start_index)_to_$(end_index).csv", ["n","u", ""])
@@ -56,13 +57,13 @@ function main(start_index::Int, end_index::Int)
     for i in ProgressBar(start_index:end_index)
         momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, i, hamiltonian, temperature, prec)
 
-        plt = plot(first.(momenta), last.(momenta), seriestype= :scatter, markersize= 0.05, legend = false, markershape = :diamond, aspect_ratio = :equal, title = "T = $(round(temperature, digits = 4))", xlims = (-2.0,2.0), ylims = (-2.0,2.0))
+        plt = plot(first.(momenta), last.(momenta), seriestype= :scatter, markersize= 0.05, legend = false, markershape = :diamond, aspect_ratio = :equal, title = "T = $(round(temperature, digits = 4))", xlims = (-1.5,1.5), ylims = (-1.5,1.5))
         plot!(plt, first.(fs), last.(fs), color = :blue)
         display(plt)
         
         gamma = Matrix{Float64}(undef, length(arclengths) + 2, 3)
         
-        FermiSurfaceIntegration.contracted_integral!(gamma, arclengths, perimeter, momenta, dVs, hamiltonian, variance, temperature)
+        FermiSurfaceIntegration.contracted_integral!(gamma, arclengths, perimeter, momenta, dVs, hamiltonian, variance, temperature, umklapp = umklapp)
         
         gamma = sortslices(gamma, dims = 1)
         gamma[begin, :] = gamma[end - 1, :] - [perimeter, 0.0, 0.0]

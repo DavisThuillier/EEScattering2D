@@ -11,7 +11,7 @@ module FermiSurfaceIntegration
 
     gaussian_delta(deviation::Float64, sigma_squared::Float64) = exp( - deviation^2 / (2 * sigma_squared)) / (sigma_squared * sqrt(2 * pi))
 
-    function collision_integral(p1::SVector{2, Float64}, k::SVector{2, Float64}, momenta::Matrix{SVector{2, Float64}}, dVs::Matrix{Float64}, hamiltonian::Function, sigma_squared::Float64, T::Float64)
+    function collision_integral(p1::SVector{2, Float64}, k::SVector{2, Float64}, momenta::Matrix{SVector{2, Float64}}, dVs::Matrix{Float64}, hamiltonian::Function, sigma_squared::Float64, T::Float64; umklapp = true)
         I2_n::Float64 = 0.0 
         I2_u::Float64 = 0.0
         I34_n::Float64 = 0.0
@@ -23,26 +23,24 @@ module FermiSurfaceIntegration
         E2::Float64 = hamiltonian(p1) + hamiltonian(k)
         E34::Float64 = hamiltonian(p1) - hamiltonian(k)
 
-        mod_shift = SVector{2}([1.0,1.0]) # For shifting the wavevector over before taking the modulus with respect to the first Brillouin Zone
+        mod_shift = SVector{2}([1.0, 1.0]) # For shifting the wavevector over before taking the modulus with respect to the first Brillouin Zone
 
         for i in 2:(size(momenta)[1] - 1)
             for j in 1:size(momenta)[2]
                 @inbounds p1_prime = momenta[i,j]
-                p2_prime = mod.(mod_shift + P - p1_prime, 2.0) - mod_shift
-                #p2_prime = P - p1_prime
-                if ( abs((P - p1_prime)[1] > 1) || abs((P - p1_prime)[1] > 1) ) # Detect whether this is an umklapp event
-                    I2_u += fd(hamiltonian(k), T) * (1 - fd(hamiltonian(p1_prime), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i] * gaussian_delta(E2 - hamiltonian(p1_prime) - hamiltonian(p2_prime), sigma_squared) 
+                p2_prime = umklapp ? mod.(mod_shift + P - p1_prime, 2.0) - mod_shift : P - p1_prime
+                if abs((P - p1_prime)[1]) > 1 || abs((P - p1_prime)[2]) > 1 # Detect whether this is an umklapp event
+                    I2_u += fd(hamiltonian(k), T) * (1 - fd(hamiltonian(p1_prime), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i, j] * gaussian_delta(E2 - hamiltonian(p1_prime) - hamiltonian(p2_prime), sigma_squared) 
                 else
-                    I2_n += fd(hamiltonian(k), T) * (1 - fd(hamiltonian(p1_prime), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i] * gaussian_delta(E2 - hamiltonian(p1_prime) - hamiltonian(p2_prime), sigma_squared) 
+                    I2_n += fd(hamiltonian(k), T) * (1 - fd(hamiltonian(p1_prime), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i, j] * gaussian_delta(E2 - hamiltonian(p1_prime) - hamiltonian(p2_prime), sigma_squared) 
                 end
 
                 @inbounds p2 = momenta[i,j]
-                p2_prime = mod.(mod_shift + Q + p2, 2) - mod_shift
-                #p2_prime = Q + p2
-                if ( abs((Q + p2)[1] > 1) || abs((Q + p2)[1] > 1) ) # Detect whether this is an umklapp event
-                    I34_n += 2 * fd(hamiltonian(p2), T) * (1 - fd(hamiltonian(k), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i] * gaussian_delta((E34 + hamiltonian(p2) - hamiltonian(p2_prime)), sigma_squared)
+                p2_prime = umklapp ? mod.(mod_shift + Q + p2, 2) - mod_shift : Q + p2
+                if abs((Q + p2)[1]) > 1 || abs((Q + p2)[2]) > 1 # Detect whether this is an umklapp event
+                    I34_u += 2 * fd(hamiltonian(p2), T) * (1 - fd(hamiltonian(k), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i,j] * gaussian_delta((E34 + hamiltonian(p2) - hamiltonian(p2_prime)), sigma_squared)
                 else
-                    I34_u += 2 * fd(hamiltonian(p2), T) * (1 - fd(hamiltonian(k), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i] * gaussian_delta((E34 + hamiltonian(p2) - hamiltonian(p2_prime)), sigma_squared)
+                    I34_n += 2 * fd(hamiltonian(p2), T) * (1 - fd(hamiltonian(k), T)) * (1 - fd(hamiltonian(p2_prime), T)) * dVs[i,j] * gaussian_delta((E34 + hamiltonian(p2) - hamiltonian(p2_prime)), sigma_squared)
                 end
             end
         end
@@ -51,7 +49,7 @@ module FermiSurfaceIntegration
     end
 
     "Compute Boltzmann collision integral between each point on FS and the injection point."
-    function contracted_integral!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, momenta::Matrix{SVector{2, Float64}}, dVs::Matrix{Float64}, hamiltonian::Function, variance::Float64, T::Float64)
+    function contracted_integral!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, momenta::Matrix{SVector{2, Float64}}, dVs::Matrix{Float64}, hamiltonian::Function, variance::Float64, T::Float64; umklapp = true)
         integral::SVector{2,Float64} = [0.0,0.0]
 
         perp_num = size(momenta)[1]
@@ -69,9 +67,9 @@ module FermiSurfaceIntegration
                 dp = norm(momenta[m + 1, i] - momenta[m - 1, i]) / 2
                 for j in eachindex(central_momenta)
                     p1 = central_momenta[j]
-                    loss_terms = collision_integral(p1, k, momenta, dVs, hamiltonian, variance, T) * fd_normalization(hamiltonian(p1), T)
+                    loss_terms = collision_integral(p1, k, momenta, dVs, hamiltonian, variance, T; umklapp = umklapp) # * fd_normalization(hamiltonian(p1), T)
 
-                    integral += loss_terms * dp * central_dp[j] / T # Divide by T due to delta functions in the integration
+                    integral += loss_terms * dp * central_dp[j] / T # Divide by kT due to linearizing the Boltzmann equation
                 end   
             end
             reduced_mat[i + 1, 1] = mod.(arclengths[i], perimeter)
@@ -80,7 +78,7 @@ module FermiSurfaceIntegration
         end
 
         ### Padding rows ###
-        reduced_mat[begin, :] = [ - 3*perimeter, 0.0, 0.0] # Will be sorted as the first element
+        reduced_mat[begin, :] = [ -3*perimeter, 0.0, 0.0] # Will be sorted as the first element
         reduced_mat[end, :] = [ 3*perimeter, 0.0, 0.0] # Will be sorted as the final element
         return nothing
     end

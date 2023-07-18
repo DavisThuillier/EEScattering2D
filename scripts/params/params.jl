@@ -9,3 +9,4 @@ const max_iterations::Int = 10000
 const num_bins::Int       = 100 # Total number of angles to sample
 const perp_num::Int64          = 20 # The number of points along v_f for each angle; MUST BE AN EVEN NUMBER
 const band::String          = "gamma"
+const umklapp::Bool        = false
