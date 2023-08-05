@@ -41,82 +41,86 @@ function fft(v::Union{Vector{ComplexF64}, Vector{Float64}}, m::Int)
 end
 
 function main()
-    band::String = "gamma"
-    resolution::String = "100_20"
-    matrix_dim::Int = 800
-    temperature::Float64 = 0.01
-    run::String = "2023.07.17(2)"
-
-    data_dir = joinpath(@__DIR__, "..", "data", band, resolution, run)
+    include("params/data_dir.jl")
+    @show data_dir
     filename::String = joinpath(data_dir, "Γ_full_$(matrix_dim)_$(temperature).csv")
 
     if isfile(filename)
         full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
         fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
-        @show norm(full_matrix' - full_matrix)
         
+    
         fs = SVector{2}.(fermi.kx, fermi.ky)
         fs_norms = norm.(fs)
         thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
-        fv = SVector{2}.(fermi.vx, fermi.vy)
 
-        lambdas = reverse(eigvals(full_matrix))
+        # n = 200
+        # for i in 1:n
+        #     display(plot(thetas, fs_norms .+ 10 * full_matrix[i,:], proj = :polar, ylims = (0,1)))
+        # end
+
+        lambdas = real.(reverse(eigvals(full_matrix)))
+        # lambdas = eigvals(full_matrix)
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
-
-        n = 40
-        display(plot(0:n, real.(lambdas[1:n]), color = :green, seriestype = :scatter))
 
     else
         println("Data file of full collision matrix does not exist.")
         return nothing
     end
     
-    scale = 1.0
 
     println("### Mode Analysis ###")
     maximal_contribution::Float64 = 0.0
     maxima_index::Int = 0
     contribution::Float64 = 0.0
 
+    even_modes = Vector{Tuple{Int,Int}}(undef, 0)
+    odd_modes  = Vector{Tuple{Int,Int}}(undef, 0)
+
     i = 1
-    while i < 20
+    n = 200
+    scale = 0.1
+    while i < n
         println("Eigenvector ", i)
         if abs(real(lambdas[i + 1]) - real(lambdas[i])) < 1e-6
             w1, w2 = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
             i += 1
         else
-            println("Single")
             w1 = eigenvecs[:, i] / norm(eigenvecs[:, i])
             w2 = w1
         end
 
-        # normal_contribution = dot(w1, n_matrix * w1) / dot(w1, full_matrix * w1)
-        # umklapp_contribution = dot(w1, u_matrix * w1) / dot(w1, full_matrix * w1)
-    
-        # println("n = ", i/2)
-        # @show normal_contribution
-        # @show umklapp_contribution
-
         maximal_contribution = 0.0
-        maxima_index = 0
-        for j in 0:20
+        maximum_index = 0
+        for j in 0:100
             contribution = abs(fft(w1, j))
-            println("m = ", j, ": ", round(contribution, digits = 5))
+            # println("m = ", j, ": ", round(contribution, digits = 5))
             if contribution > maximal_contribution
                 maximal_contribution = contribution
-                maxima_index = j
+                maximum_index = j
             end
         end
-        println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maxima_index)
+        isodd(maximum_index) ? push!(odd_modes, (i, maximum_index)) : push!(even_modes, (i, maximum_index)) 
+        println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
         println()
 
 
-        plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) \$"))
+        plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"))
         plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
         plot!(plt, thetas, fs_norms, color = :green)
         display(plt)
         i += 1
     end
+
+    
+    spectrum = plot(first.(odd_modes), map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes")
+    plot!(spectrum, first.(even_modes), map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
+    display(spectrum)
+
+    spectrum2 = plot(last.(odd_modes), -map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes", xlims = (0,50))
+    plot!(spectrum2, last.(even_modes), -map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
+    plot!(spectrum2, title = "T = $(round(temperature, digits = 4))", ylabel = L"- \lambda_m ", xlabel = "m")
+    display(spectrum2)
 end
 
 main()

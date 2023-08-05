@@ -90,9 +90,9 @@ module FermiSurfaceMesh
             n = SVector{2}([cos(angles[i]), sin(angles[i])])
             if bz
                 if 0.0 <= angles[i] < pi / 4 || 3pi / 4 < angles[i] < 5pi / 4 || 7pi / 4 < angles[i] <= 2pi
-                    endpoint   = sqrt(1 + sin(angles[i])^2) * n
+                    endpoint   = 0.5 * sqrt(1 + sin(angles[i])^2) * n
                 else
-                    endpoint   = sqrt(1 + cos(angles[i])^2) * n
+                    endpoint   = 0.5 * sqrt(1 + cos(angles[i])^2) * n
                 end
             else
                 endpoint = n
@@ -222,6 +222,7 @@ module FermiSurfaceMesh
         if e_bound > 0
             while i < i_limit && hamiltonian(endpoint) < e_bound
                 endpoint += step * n
+                bz && (abs(endpoint[1]) > 0.5 || abs(endpoint[2]) > 0.5) && break
                 i += 1
             end
         else
@@ -249,10 +250,10 @@ module FermiSurfaceMesh
 
         # Check if k_bound lies outside the Brillouin zone
         if bz
-            if abs(k_bound[1]) > 1
-                k_bound = fs_k + ( (sign(k_bound[1]) - fs_k[1]) / n[1]) * n
-            elseif abs(k_bound[2]) > 1
-                k_bound = fs_k + ( (sign(k_bound[2]) - fs_k[2]) / n[2]) * n
+            if abs(k_bound[1]) > 0.5
+                k_bound = fs_k + ( (0.5 * sign(k_bound[1]) - fs_k[1]) / n[1]) * n
+            elseif abs(k_bound[2]) > 0.5
+                k_bound = fs_k + ( (0.5 * sign(k_bound[2]) - fs_k[2]) / n[2]) * n
             end
         end
 

@@ -8,13 +8,7 @@ using CSV
 import StaticArrays: SVector
 
 function main()
-    band = "gamma"
-    resolution = "100_20"
-    matrix_dim = 800
-    temperature = 0.01
-    run = "2023.07.17(2)"
-    
-    data_dir = joinpath(@__DIR__, "..", "data", band, resolution, run)
+    include("params/data_dir.jl")
 
     n_stem = joinpath(data_dir, "Γn_$(matrix_dim)_$(temperature)")
     u_stem = joinpath(data_dir, "Γu_$(matrix_dim)_$(temperature)")
@@ -46,12 +40,6 @@ function main()
         u_matrix[start_index:end_index, :] = readdlm(u_files[i], ',', Float64)
     end
 
-    # Enforce particle conservation by ensuring row sum is null
-    # for i in 1:(div(matrix_dim, 8) + 1)
-    #     n_matrix[i,i] -= sum(n_matrix[i,:])
-    #     u_matrix[i,i] -= sum(u_matrix[i,:])
-    # end
-
     ### Generate Full Matrix ###
     n_matrix[2 + div(matrix_dim, 8): div(matrix_dim, 4) + 1, :] = circshift( reverse( n_matrix[1:div(matrix_dim, 8), :]), (0, 2 * div(matrix_dim, 8) + 1) )
     u_matrix[2 + div(matrix_dim, 8): div(matrix_dim, 4) + 1, :] = circshift( reverse( u_matrix[1:div(matrix_dim, 8), :]), (0, 2 * div(matrix_dim, 8) + 1) )
@@ -65,11 +53,9 @@ function main()
     u_matrix[1 + div(matrix_dim, 2) : matrix_dim, :] = circshift( u_matrix[1 : div(matrix_dim, 2), :], (0, div(matrix_dim, 2)))
     # full_matrix[1 + div(matrix_dim, 2) : matrix_dim, :] = circshift( full_matrix[1 : div(matrix_dim, 2), :], (0, div(matrix_dim, 2)))
 
-    # u_matrix *= (2pi/ matrix_dim)
-    # n_matrix *= (2pi/ matrix_dim)
     full_matrix = ( n_matrix + u_matrix) # Prefactor corresponds to the differential in the angular integral when taking the product of full_matrix and a vector
 
-    full_matrix = (full_matrix' + full_matrix) / 2
+    #full_matrix = (full_matrix' + full_matrix) / 2
     for i in eachindex(full_matrix[:, 1])
         full_matrix[i,i] -= sum(full_matrix[i,:])
     end

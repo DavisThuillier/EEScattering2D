@@ -2,9 +2,10 @@
 module EEScattering2D
 
     export FermiSurfaceMesh, FermiSurfaceIntegration
-    export uniform_fermi_surface
+    export uniform_fermi_surface, get_dos, inner_product
 
     import StaticArrays: SVector
+    import LinearAlgebra: norm
     using DelimitedFiles
 
     include("mesh.jl")
@@ -13,14 +14,22 @@ module EEScattering2D
     include("integration.jl")
     import .FermiSurfaceIntegration
 
-    # "Assuming injection angles between 0 and pi/4, construct the full collision matrix."
-    # function generate_full_matrix(sub_mat::Matrix{Float64})
-    #     num_columns = size(mat)[2]
-    #     full_mat = Matrix{Float64}(undef, num_columns, num_columns)
+    function inner_product(vec1, vec2, fs, hamiltonian::Function, T::Float64)
+        weights = FermiSurfaceIntegration.fd.(hamiltonian.(fs), T) .* (1 .- FermiSurfaceIntegration.fd.(hamiltonian.(fs), T))
+        return (vec1' * (weights .* vec2))
+    end
 
-    #     full_mat[]
-    #     full_mat[2 + div(matrix_dim, 8): div(matrix_dim, 4) + 1, :] = circshift( reverse( n_matrix[1:div(matrix_dim, 8), :]), (0, 2 * div(matrix_dim, 8) + 1) )
-    # end
+    function get_dos(fs::Vector{SVector{2,Float64}}, fv::Vector{SVector{2,Float64}})
+        L::Int = length(fs)
+        ds = FermiSurfaceMesh.get_ds(fs)
+    
+        density::Float64 = 0.0
+        for i in eachindex(fs) 
+            density += 0.5 * ds[i] * (1/norm(fv[i]) + 1/norm(fv[mod(i, L) + 1]))
+        end
+    
+        return density
+    end
 
     "Set diagonal elements to give null row sum asssuming uniform arclength grid."
     function enforce_particle_conservation!(mat::Matrix{Float64})
