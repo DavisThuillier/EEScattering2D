@@ -11,7 +11,7 @@ module FermiSurfaceIntegration
 
     gaussian_delta(deviation::Float64, sigma_squared::Float64) = exp( - deviation^2 / (2 * sigma_squared)) / (sigma_squared * sqrt(2 * pi))
 
-    function collision_integral(p1_index::Tuple{Int64, Int64}, k_index::Tuple{Int64, Int64}, momenta::Matrix{SVector{2, Float64}}, energies::Matrix{Float64}, dVs::Matrix{Float64}, hamiltonian::Function, sigma_squared::Float64, T::Float64; umklapp = true)
+    function collision_integral(p1_index::Tuple{Int64, Int64}, k_index::Tuple{Int64, Int64}, momenta::Matrix{SVector{2, Float64}}, energies::Matrix{Float64}, dVs::Matrix{Float64}, hamiltonian::Function, sigma_squared::Float64, T::Float64, q_squared::Float64; umklapp = true)
         p1 = momenta[p1_index[1], p1_index[2]]
         k  = momenta[k_index[1] , k_index[2]]
         
@@ -37,9 +37,9 @@ module FermiSurfaceIntegration
                 E1_prime = energies[i,j]
                 E2_prime = hamiltonian(p2_prime)
                 if abs((P - p1_prime)[1]) > 0.5 || abs((P - p1_prime)[2]) > 0.5 # Detect whether this is an umklapp event
-                    I2_u += fd(Ek, T) * (1 - fd(E1_prime, T)) * (1 - fd(E2_prime, T)) * dVs[i, j] * gaussian_delta(E_sum - E1_prime - E2_prime, sigma_squared) 
+                    I2_u += fd(Ek, T) * (1 - fd(E1_prime, T)) * (1 - fd(E2_prime, T)) * dVs[i, j] * gaussian_delta(E_sum - E1_prime - E2_prime, sigma_squared) / (norm(p1_prime - p1)^2 + q_squared)^2
                 else
-                    I2_n += fd(Ek, T) * (1 - fd(E1_prime, T)) * (1 - fd(E2_prime, T)) * dVs[i, j] * gaussian_delta(E_sum - E1_prime - E2_prime, sigma_squared) 
+                    I2_n += fd(Ek, T) * (1 - fd(E1_prime, T)) * (1 - fd(E2_prime, T)) * dVs[i, j] * gaussian_delta(E_sum - E1_prime - E2_prime, sigma_squared) / (norm(p1_prime - p1)^2 + q_squared)^2
                 end
 
                 @inbounds p2 = momenta[i,j]
@@ -47,9 +47,9 @@ module FermiSurfaceIntegration
                 E2 = energies[i,j]
                 E2_prime = hamiltonian(p2_prime)
                 if abs((Q + p2)[1]) > 0.5 || abs((Q + p2)[2]) > 0.5 # Detect whether this is an umklapp event
-                    I34_u += 2 * fd(E2, T) * (1 - fd(Ek, T)) * (1 - fd(E2_prime, T)) * dVs[i,j] * gaussian_delta((E_diff + E2 - E2_prime), sigma_squared)
+                    I34_u += 2 * fd(E2, T) * (1 - fd(Ek, T)) * (1 - fd(E2_prime, T)) * dVs[i,j] * gaussian_delta((E_diff + E2 - E2_prime), sigma_squared) / (norm(p1 - k)^2 + q_squared)^2
                 else
-                    I34_n += 2 * fd(E2, T) * (1 - fd(Ek, T)) * (1 - fd(E2_prime, T)) * dVs[i,j] * gaussian_delta((E_diff + E2 - E2_prime), sigma_squared)
+                    I34_n += 2 * fd(E2, T) * (1 - fd(Ek, T)) * (1 - fd(E2_prime, T)) * dVs[i,j] * gaussian_delta((E_diff + E2 - E2_prime), sigma_squared) / (norm(p1 - k)^2 + q_squared)^2
                 end
             end
         end
@@ -58,7 +58,7 @@ module FermiSurfaceIntegration
     end
 
     "Compute Boltzmann collision integral between each point on FS and the injection point."
-    function contracted_integral!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, momenta::Matrix{SVector{2, Float64}}, dVs::Matrix{Float64}, hamiltonian::Function, variance::Float64, T::Float64; umklapp = true)
+    function contracted_integral!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, momenta::Matrix{SVector{2, Float64}}, dVs::Matrix{Float64}, hamiltonian::Function, variance::Float64, T::Float64, q_squared::Float64; umklapp = true)
         integral::SVector{2,Float64} = [0.0,0.0]
 
         perp_num = size(momenta)[1]
@@ -72,7 +72,6 @@ module FermiSurfaceIntegration
 
         energies = hamiltonian.(momenta) 
         
-          
         for i in 1:size(momenta)[2]            
             integral = SVector{2}([0.0, 0.0])
             for m in 2:(perp_num-1)
@@ -81,11 +80,12 @@ module FermiSurfaceIntegration
                 for j in eachindex(central_momenta)
                     p1_index = (j, 1)
                     # p1 = central_momenta[j]
-                    loss_terms = collision_integral(p1_index, k_index, momenta, energies, dVs, hamiltonian, variance, T; umklapp = umklapp) * fd_normalization(energies[p1_index[1], p1_index[2]], T)
+                    loss_terms = collision_integral(p1_index, k_index, momenta, energies, dVs, hamiltonian, variance, T, q_squared; umklapp = umklapp) * fd_normalization(energies[p1_index[1], p1_index[2]], T)
 
                     integral += loss_terms * dp * central_dp[j] 
                 end                  
             end
+            integral = integral
             reduced_mat[i + 1, 1] = mod.(arclengths[i], perimeter)
             reduced_mat[i + 1, 2] = integral[1] / width # Normal scattering contribution
             reduced_mat[i + 1, 3] = integral[2] / width # Umklapp scattering contribution

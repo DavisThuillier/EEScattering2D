@@ -15,8 +15,9 @@ module EEScattering2D
     import .FermiSurfaceIntegration
 
     function inner_product(vec1, vec2, fs, hamiltonian::Function, T::Float64)
+        ds = FermiSurfaceMesh.get_ds(fs)
         weights = FermiSurfaceIntegration.fd.(hamiltonian.(fs), T) .* (1 .- FermiSurfaceIntegration.fd.(hamiltonian.(fs), T))
-        return (vec1' * (weights .* vec2))
+        return vec1' * ((weights .* vec2) .* ds) 
     end
 
     function get_dos(fs::Vector{SVector{2,Float64}}, fv::Vector{SVector{2,Float64}})

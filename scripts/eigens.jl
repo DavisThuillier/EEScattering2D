@@ -78,8 +78,8 @@ function main()
     odd_modes  = Vector{Tuple{Int,Int}}(undef, 0)
 
     i = 1
-    n = 200
-    scale = 0.1
+    n = 100
+    scale = 1.0
     while i < n
         println("Eigenvector ", i)
         if abs(real(lambdas[i + 1]) - real(lambdas[i])) < 1e-6
@@ -92,7 +92,7 @@ function main()
 
         maximal_contribution = 0.0
         maximum_index = 0
-        for j in 0:100
+        for j in 0:n
             contribution = abs(fft(w1, j))
             # println("m = ", j, ": ", round(contribution, digits = 5))
             if contribution > maximal_contribution
@@ -105,10 +105,12 @@ function main()
         println()
 
 
-        plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"))
-        plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
-        plot!(plt, thetas, fs_norms, color = :green)
-        display(plt)
+        if i < 40
+            plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"))
+            plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
+            plot!(plt, thetas, fs_norms, color = :green)
+            display(plt)
+        end
         i += 1
     end
 

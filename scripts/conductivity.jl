@@ -9,15 +9,6 @@ using LaTeXStrings
 import StaticArrays: SVector
 using Statistics
 
-# function inner_product(v1::Union{Vector{Float64}, Vector{ComplexF64}}, v2::Union{Vector{Float64}, Vector{ComplexF64}}, weights::Vector{Float64})
-#     length(v1) == length(v2) || throw(DimensionMismatch("vectors in inner product must have same dimensions"))
-#     product = 0.0
-#     for i in eachindex(v1)
-#         product += weights[i] * conj(v1[i]) * v2[i]
-#     end
-
-#     return product
-# end
 
 function main()
     
@@ -30,27 +21,47 @@ function main()
         fs = SVector{2}.(fermi.kx, fermi.ky)
         ds = FermiSurfaceMesh.get_ds(fs)
 
-        fv = SVector{2}.(fermi.vx, fermi.vy)
-
         σ = Matrix{Float64}(undef, 2, 2) # Conductivity tensor
 
-        lambdas = reverse(eigvals(full_matrix))
+        lambdas = reverse(eigvals(full_matrix)) * mean(ds)
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2)
 
         vx = Vector{ComplexF64}(undef, length(lambdas))
         vy = Vector{ComplexF64}(undef, length(lambdas))
         for i in eachindex(vx)
-            # vx[i] = inner_product(fermi.vx, eigenvecs[:, i], ds) / (inner_product(eigenvecs[:, i], eigenvecs[:, i], ds))
+            # vx[i] = inner_product(fermi.vx, eigenvecs[:, i], fs, hamiltonian, temperature) / (inner_product(eigenvecs[:, i], eigenvecs[:, i], fs, hamiltonian, temperature))
+            # vy[i] = inner_product(fermi.vy, eigenvecs[:, i], fs, hamiltonian, temperature) / (inner_product(eigenvecs[:, i], eigenvecs[:, i], fs, hamiltonian, temperature))
             vx[i] = dot(fermi.vx, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i])
-            vy[i] = dot(fermi.vy, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i])
-            # vy[i] = inner_product(fermi.vy, eigenvecs[:, i], ds) / (inner_product(eigenvecs[:, i], eigenvecs[:, i], ds))
+            vy[i] = dot(fermi.vy, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i]) 
         end
+
+    inverse_times = diagm(1 ./ lambdas)
+    inverse_times[1,1] = 0.0
         
-    σ[1,1] = real.(inner_product(vx, diagm(lambdas) * vx, fs, hamiltonian, temperature))
-    σ[1,2] =  real.(inner_product(vx, diagm(lambdas) * vy, fs, hamiltonian, temperature))
-    σ[2,1] = real.(inner_product(vy, diagm(lambdas) * vx, fs, hamiltonian, temperature))
-    σ[2,2] = real.(inner_product(vy, diagm(lambdas) * vy, fs, hamiltonian, temperature))
-        display(σ * 5.25e3)
+    σ[1,1] = real.(inner_product(vx, inverse_times * vx, fs, hamiltonian, temperature))
+    σ[1,2] = real.(inner_product(vx, inverse_times * vy, fs, hamiltonian, temperature))
+    σ[2,1] = real.(inner_product(vy, inverse_times * vx, fs, hamiltonian, temperature))
+    σ[2,2] = real.(inner_product(vy, inverse_times * vy, fs, hamiltonian, temperature))
+
+
+    prefactor = 193.468 * 4 / temperature
+
+    println("T = ", temperature)
+    println("σ = ", σ)
+    println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2 * prefactor))
+
+
+    ### Single Rate Approximation ###
+    # σ[1,1] = real.(inner_product(vx, vx, fs, hamiltonian, temperature))
+    # σ[1,2] = real.(inner_product(vx, vy, fs, hamiltonian, temperature))
+    # σ[2,1] = real.(inner_product(vy, vx, fs, hamiltonian, temperature))
+    # σ[2,2] = real.(inner_product(vy, vy, fs, hamiltonian, temperature))
+
+    # σ *= inverse_times[2,2]
+    # println("T = ", temperature)
+    # println("σ = ", σ)
+    # println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2 * prefactor))
+
 
     else
         println("Data file of full collision matrix does not exist.")
