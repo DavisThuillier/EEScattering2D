@@ -49,8 +49,8 @@ function main()
         full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
         fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
         
-    
         fs = SVector{2}.(fermi.kx, fermi.ky)
+        ds = mean(FermiSurfaceMesh.get_ds(fs))
         fs_norms = norm.(fs)
         thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
 
@@ -59,7 +59,7 @@ function main()
         #     display(plot(thetas, fs_norms .+ 10 * full_matrix[i,:], proj = :polar, ylims = (0,1)))
         # end
 
-        lambdas = real.(reverse(eigvals(full_matrix)))
+        lambdas = real.(reverse(eigvals(full_matrix))) * ds * 5.25e3 # Rates in ps^-1
         # lambdas = eigvals(full_matrix)
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
 
@@ -71,7 +71,7 @@ function main()
 
     println("### Mode Analysis ###")
     maximal_contribution::Float64 = 0.0
-    maxima_index::Int = 0
+    maximum_index::Int = 0
     contribution::Float64 = 0.0
 
     even_modes = Vector{Tuple{Int,Int}}(undef, 0)
@@ -81,7 +81,7 @@ function main()
     n = 100
     scale = 1.0
     while i < n
-        println("Eigenvector ", i)
+        
         if abs(real(lambdas[i + 1]) - real(lambdas[i])) < 1e-6
             w1, w2 = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
             i += 1
@@ -92,7 +92,7 @@ function main()
 
         maximal_contribution = 0.0
         maximum_index = 0
-        for j in 0:n
+        for j in 0:800
             contribution = abs(fft(w1, j))
             # println("m = ", j, ": ", round(contribution, digits = 5))
             if contribution > maximal_contribution
@@ -101,8 +101,11 @@ function main()
             end
         end
         isodd(maximum_index) ? push!(odd_modes, (i, maximum_index)) : push!(even_modes, (i, maximum_index)) 
-        println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
-        println()
+        if i < 10
+            println("Eigenvector ", i)
+            println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
+            println()
+        end
 
 
         if i < 40

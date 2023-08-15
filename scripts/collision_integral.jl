@@ -44,7 +44,7 @@ function main(start_index::Int, end_index::Int)
 
     fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim)
     fv = Vector{SVector{2, Float64}}(undef, length(fs))
-        FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
+    FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
 
     ef::Float64 = 0.55 # Fermi energy in eV
     e0::Float64 = 55.26349406e6 # Vacuum permittivity in e^2 / eV / m

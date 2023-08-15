@@ -55,12 +55,11 @@ function main()
 
     full_matrix = ( n_matrix + u_matrix) # Prefactor corresponds to the differential in the angular integral when taking the product of full_matrix and a vector
 
-    full_matrix = (full_matrix' + full_matrix) / 2
+    #full_matrix = (full_matrix' + full_matrix) / 2 # Symmetrizing matrix
     for i in eachindex(full_matrix[:, 1])
         full_matrix[i,i] -= sum(full_matrix[i,:])
     end
 
-    
     outfile = "Γ_full_$(matrix_dim)_$(temperature).csv"
     open(joinpath(data_dir, outfile), "w") do file
         writedlm(file, full_matrix, ",")

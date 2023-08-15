@@ -260,19 +260,37 @@ module FermiSurfaceMesh
         return k_bound
     end
 
+    fd(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
+
     function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, hamiltonian::Function, perp_num::Int, T::Float64, precision::Float64; bz::Bool = true)
         e_max::Float64 = 2  * T * acosh(1 / (2 * sqrt(precision)))
+
+        β::Float64 = sqrt(1 - 4*precision)
+        energies = Vector{Float64}(undef, perp_num)
+        energies[1] = 0.0
+        for i in 2:div(perp_num,2)+1
+            energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/perp_num) - 1)
+            energies[perp_num - i + 2] = - energies[i] 
+        end
+        circshift!(energies, div(perp_num,2))
 
         momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
         for i in eachindex(fermi_surface)
-            p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-            p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-
+            n = fermi_velocity[i] / norm(fermi_velocity[i])
             for j in 1:perp_num
-                @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
+                momenta[j, i] = fermi_surface[i] + n * energies[j] 
             end
         end
+
+        # for i in eachindex(fermi_surface)
+        #     p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
+        #     p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
+
+        #     for j in 1:perp_num
+        #         @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
+        #     end
+        # end
 
         return momenta
     end

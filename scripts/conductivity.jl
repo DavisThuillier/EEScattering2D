@@ -11,7 +11,6 @@ using Statistics
 
 
 function main()
-    
     fs_filename::String  = joinpath(data_dir, "fermi_surface_$(matrix_dim).csv")
 
     if isfile(mat_filename)
@@ -24,6 +23,7 @@ function main()
         σ = Matrix{Float64}(undef, 2, 2) # Conductivity tensor
 
         lambdas = reverse(eigvals(full_matrix)) * mean(ds)
+
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2)
 
         vx = Vector{ComplexF64}(undef, length(lambdas))
@@ -35,32 +35,22 @@ function main()
             vy[i] = dot(fermi.vy, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i]) 
         end
 
-    inverse_times = diagm(1 ./ lambdas)
-    inverse_times[1,1] = 0.0
-        
-    σ[1,1] = real.(inner_product(vx, inverse_times * vx, fs, hamiltonian, temperature))
-    σ[1,2] = real.(inner_product(vx, inverse_times * vy, fs, hamiltonian, temperature))
-    σ[2,1] = real.(inner_product(vy, inverse_times * vx, fs, hamiltonian, temperature))
-    σ[2,2] = real.(inner_product(vy, inverse_times * vy, fs, hamiltonian, temperature))
+        # Enforce that the overlap with the m = 0 mode is null
+        vx[1] = 0.0
+        vy[1] = 0.0
 
+        inverse_times = diagm(1 ./ lambdas)
+            
+        σ[1,1] = real.(inner_product(vx, inverse_times * vx, fs, hamiltonian, temperature))
+        σ[1,2] = real.(inner_product(vx, inverse_times * vy, fs, hamiltonian, temperature))
+        σ[2,1] = real.(inner_product(vy, inverse_times * vx, fs, hamiltonian, temperature))
+        σ[2,2] = real.(inner_product(vy, inverse_times * vy, fs, hamiltonian, temperature))
 
-    prefactor = 193.468 * 4 / temperature
+        prefactor = 193.468 * 4
 
-    println("T = ", temperature)
-    println("σ = ", σ)
-    println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2 * prefactor))
-
-
-    ### Single Rate Approximation ###
-    # σ[1,1] = real.(inner_product(vx, vx, fs, hamiltonian, temperature))
-    # σ[1,2] = real.(inner_product(vx, vy, fs, hamiltonian, temperature))
-    # σ[2,1] = real.(inner_product(vy, vx, fs, hamiltonian, temperature))
-    # σ[2,2] = real.(inner_product(vy, vy, fs, hamiltonian, temperature))
-
-    # σ *= inverse_times[2,2]
-    # println("T = ", temperature)
-    # println("σ = ", σ)
-    # println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2 * prefactor))
+        println("T = ", temperature)
+        println("σ = ", σ)
+        println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2 * prefactor))
 
 
     else
