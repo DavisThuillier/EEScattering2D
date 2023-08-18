@@ -35,6 +35,8 @@ function main()
             vy[i] = dot(fermi.vy, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i]) 
         end
 
+        @show abs(vx[3]) / abs(vx[5])
+
         # Enforce that the overlap with the m = 0 mode is null
         vx[1] = 0.0
         vy[1] = 0.0

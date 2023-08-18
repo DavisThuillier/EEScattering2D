@@ -8,6 +8,8 @@ module FermiSurfaceMesh
     import Statistics: median, mean
     import SpecialFunctions: erfinv, erf
     using ProgressBars
+    using VoronoiCells
+    import GeometryBasics: Point
 
     ## Collinear width parameters ##
     const max_width::Float64 = 0.4 # Maximum width of collinear region in radians
@@ -210,6 +212,8 @@ module FermiSurfaceMesh
     end
 
     function get_k_bound(hamiltonian::Function, e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64}, max_iterations = 10000, tolerance = 0.0001; bz::Bool = true)
+        e_bound  == 0.0 && return fs_k
+
         n = velocity / norm(velocity)
         step = (e_bound / norm(velocity)) / 2
 
@@ -265,37 +269,78 @@ module FermiSurfaceMesh
     function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, hamiltonian::Function, perp_num::Int, T::Float64, precision::Float64; bz::Bool = true)
         e_max::Float64 = 2  * T * acosh(1 / (2 * sqrt(precision)))
 
-        β::Float64 = sqrt(1 - 4*precision)
-        energies = Vector{Float64}(undef, perp_num)
-        energies[1] = 0.0
-        for i in 2:div(perp_num,2)+1
-            energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/perp_num) - 1)
-            energies[perp_num - i + 2] = - energies[i] 
-        end
-        circshift!(energies, div(perp_num,2))
-
         momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
-        for i in eachindex(fermi_surface)
-            n = fermi_velocity[i] / norm(fermi_velocity[i])
-            for j in 1:perp_num
-                momenta[j, i] = fermi_surface[i] + n * energies[j] 
-            end
-        end
-
+        ## Fermi Profile ##
+        # β::Float64 = sqrt(1 - 4*precision)
+        # energies = Vector{Float64}(undef, perp_num)
+        # energies[1] = 0.0
+        # for i in 2:div(perp_num,2)+1
+        #     energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/perp_num) - 1)
+        #     energies[perp_num - i + 2] = - energies[i] 
+        # end
+        # circshift!(energies, div(perp_num,2))
+        #
         # for i in eachindex(fermi_surface)
-        #     p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-        #     p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-
+        #     n = fermi_velocity[i] / norm(fermi_velocity[i])
         #     for j in 1:perp_num
-        #         @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
+        #         #momenta[j, i] = fermi_surface[i] + n * energies[j] 
+        #         momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; bz = bz)
         #     end
         # end
+
+
+        ## Uniform Mesh ##
+        for i in eachindex(fermi_surface)
+            p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
+            p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
+
+            for j in 1:perp_num
+                @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
+            end
+        end
 
         return momenta
     end
 
     area(v::SVector{2, Float64}, u::SVector{2, Float64}) = abs(v[1] * u[2] - v[2] * u[1]) # Area in the plane spanned by 2-vectors
+
+    function get_dV(ind_t::Int, ind_s::Int, momenta::Matrix{SVector{2, Float64}}, modulus)
+        vertex = momenta[ind_t, ind_s]
+
+        dV::Float64 = 0.0
+
+        s_neighbors = [momenta[ind_t, mod(ind_s, modulus) + 1], momenta[ind_t, mod(ind_s - 2, modulus) + 1]]
+        t_neighbors = [momenta[ind_t + 1, ind_s], momenta[ind_t - 1, ind_s]]
+        diags = Matrix{SVector{2,Float64}}(undef, 2, 2)
+        diags[1,1] = momenta[ind_t + 1, mod(ind_s, modulus) + 1]
+        diags[1,2] = momenta[ind_t - 1, mod(ind_s, modulus) + 1]
+        diags[2,1] = momenta[ind_t + 1, mod(ind_s - 2, modulus) + 1]
+        diags[2,2] = momenta[ind_t - 1, mod(ind_s - 2, modulus) + 1]
+
+        for i in eachindex(s_neighbors) 
+            for j in eachindex(t_neighbors)
+                mid_s = (s_neighbors[i] - vertex) / 2
+                mid_t = (t_neighbors[j] - vertex) / 2
+                diag = (diags[i,j] - vertex) / 2
+                Δ1 = diag + (mid_t - mid_s)
+                Δ2 = diag - (mid_t - mid_s)
+
+                k1 = Δ1[2] / Δ1[1]
+                k2 = Δ2[2] / Δ2[1]
+
+                b1 = - k1 * mid_s[1] + mid_s[2]
+                b2 = - k2 * mid_t[1] + mid_t[2]
+
+                d::SVector{2, Float64} = [b1 + b2, k1*k2*(mid_t[1] - mid_s[1]) + k2 * mid_s[2] - k1 * mid_t[2]]
+                
+                dV += area(d, mid_t - mid_s) / 2
+            end
+        end 
+
+        return dV
+        
+    end
 
     function discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz::Bool = true)
         colin_width::Float64 = collinear_width(T)
@@ -312,11 +357,22 @@ module FermiSurfaceMesh
         dVs     = zeros(Float64, perp_num, length(new_fs))
         momenta = temperature_broaden(new_fs, new_fv, hamiltonian, perp_num, T, precision; bz = bz)
 
-        for i in 2:(size(momenta)[1] - 1) # Ignore boundary contours
-            for j in 1:size(momenta)[2]
-                dVs[i,j] = area((momenta[i + 1, j] - momenta[i - 1, j])/ 2, (momenta[i, mod(j, length(new_fs)) + 1] - momenta[i, mod(j - 2, length(new_fs)) + 1]) / 2)
-            end
-        end
+        points = map(x -> Point(x[1], x[2]), vec(momenta))
+        BrillouinZone = Rectangle(Point(-0.5, -0.5), Point(0.5, 0.5))
+        tess = voronoicells(points, BrillouinZone)
+        areas = voronoiarea(tess)
+
+        dVs = reshape(areas, size(momenta))
+        # fill!(dVs[begin,:], 0.0)
+        # fill!(dVs[end,:], 0.0)
+
+        # for i in 2:(size(momenta)[1] - 1) # Ignore boundary contours
+        #     for j in 1:size(momenta)[2]
+        #         #dVs[i,j] = area((momenta[i + 1, j] - momenta[i - 1, j])/ 2, (momenta[i, mod(j, length(new_fs)) + 1] - momenta[i, mod(j - 2, length(new_fs)) + 1]) / 2)
+        #         #dVs[i,j] = norm(momenta[i + 1, j] - momenta[i - 1, j])  * (norm(momenta[i, mod(j, length(new_fs)) + 1] - momenta[i,j]) + norm(momenta[i, mod(j - 2, length(new_fs)) + 1] - momenta[i,j])) / 4
+        #         dVs[i,j] = get_dV(i,j, momenta, length(new_fs))
+        #     end
+        # end
 
         variance = median(dVs) / 4 # Approximate minimal width squared for delta function normalization
 

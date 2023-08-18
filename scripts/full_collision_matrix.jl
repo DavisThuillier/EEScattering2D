@@ -55,7 +55,14 @@ function main()
 
     full_matrix = ( n_matrix + u_matrix) # Prefactor corresponds to the differential in the angular integral when taking the product of full_matrix and a vector
 
-    #full_matrix = (full_matrix' + full_matrix) / 2 # Symmetrizing matrix
+    sym_mat_norm = norm((full_matrix + full_matrix')/2)
+    asym_mat_norm = norm((full_matrix - full_matrix')/2)
+
+    symmetry = (sym_mat_norm - asym_mat_norm) / (sym_mat_norm + asym_mat_norm) 
+    symmetry = 0.5 * (symmetry + 1.0)
+    @show symmetry
+
+    # full_matrix = (full_matrix' + full_matrix) / 2 # Symmetrizing matrix
     for i in eachindex(full_matrix[:, 1])
         full_matrix[i,i] -= sum(full_matrix[i,:])
     end

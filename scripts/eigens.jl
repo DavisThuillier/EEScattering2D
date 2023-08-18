@@ -50,24 +50,17 @@ function main()
         fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
         
         fs = SVector{2}.(fermi.kx, fermi.ky)
-        ds = mean(FermiSurfaceMesh.get_ds(fs))
         fs_norms = norm.(fs)
         thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
 
-        # n = 200
-        # for i in 1:n
-        #     display(plot(thetas, fs_norms .+ 10 * full_matrix[i,:], proj = :polar, ylims = (0,1)))
-        # end
 
-        lambdas = real.(reverse(eigvals(full_matrix))) * ds * 5.25e3 # Rates in ps^-1
-        # lambdas = eigvals(full_matrix)
+        lambdas = real.(reverse(eigvals(full_matrix))) * 5.25e3 # Rates in ps^-1
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
 
     else
         println("Data file of full collision matrix does not exist.")
         return nothing
     end
-    
 
     println("### Mode Analysis ###")
     maximal_contribution::Float64 = 0.0
@@ -92,7 +85,7 @@ function main()
 
         maximal_contribution = 0.0
         maximum_index = 0
-        for j in 0:800
+        for j in 0:500
             contribution = abs(fft(w1, j))
             # println("m = ", j, ": ", round(contribution, digits = 5))
             if contribution > maximal_contribution
@@ -100,15 +93,22 @@ function main()
                 maximum_index = j
             end
         end
+
         isodd(maximum_index) ? push!(odd_modes, (i, maximum_index)) : push!(even_modes, (i, maximum_index)) 
         if i < 10
             println("Eigenvector ", i)
             println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
+            if i == 3 || i == 5
+                @show abs(fft(w1, 1))
+                @show abs(fft(w1, 3))
+                @show abs(fft(w1, 5))
+            end
+
             println()
         end
 
 
-        if i < 40
+        if i < 20
             plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"))
             plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
             plot!(plt, thetas, fs_norms, color = :green)

@@ -80,15 +80,14 @@ module FermiSurfaceIntegration
                 for j in eachindex(central_momenta)
                     p1_index = (j, 1)
                     # p1 = central_momenta[j]
-                    loss_terms = collision_integral(p1_index, k_index, momenta, energies, dVs, hamiltonian, variance, T, q_squared; umklapp = umklapp) * fd_normalization(energies[p1_index[1], p1_index[2]], T)
+                    loss_terms = collision_integral(p1_index, k_index, momenta, energies, dVs, hamiltonian, variance, T, q_squared; umklapp = umklapp) / ( (2pi)^4 * T) 
 
                     integral += loss_terms * dp * central_dp[j] 
                 end                  
             end
-            integral = integral
             reduced_mat[i + 1, 1] = mod.(arclengths[i], perimeter)
-            reduced_mat[i + 1, 2] = integral[1] / width # Normal scattering contribution
-            reduced_mat[i + 1, 3] = integral[2] / width # Umklapp scattering contribution
+            reduced_mat[i + 1, 2] = integral[1] #/ width # Normal scattering contribution
+            reduced_mat[i + 1, 3] = integral[2] #/ width # Umklapp scattering contribution
         end
 
         ### Padding rows ###
