@@ -79,7 +79,6 @@ module FermiSurfaceIntegration
                 dp = norm(momenta[m + 1, i] - momenta[m - 1, i]) / 2
                 for j in eachindex(central_momenta)
                     p1_index = (j, 1)
-                    # p1 = central_momenta[j]
                     loss_terms = collision_integral(p1_index, k_index, momenta, energies, dVs, hamiltonian, variance, T, q_squared; umklapp = umklapp) / ( (2pi)^4 * T) 
 
                     integral += loss_terms * dp * central_dp[j] 

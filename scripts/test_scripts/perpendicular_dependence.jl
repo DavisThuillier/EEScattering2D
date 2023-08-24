@@ -29,8 +29,6 @@ function main()
 
     t_1 = 2
     
-
-    
     # for i in CartesianIndices(momenta)
     #     k_index = (i[1], i[2])
     #     integral = FermiSurfaceIntegration.collision_integral((t_1, s_1), k_index, momenta, energies, dVs, hamiltonian, variance, temperature, q_squared, umklapp = umklapp)

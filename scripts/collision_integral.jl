@@ -94,10 +94,6 @@ function main(start_index::Int, end_index::Int)
         open(filenames[2], "a") do file
             writedlm(file, prefactor * transpose(itp_u.(interpolation_arclengths) .* sqrt.(norm.(fv) .* ds)), ",")
         end
-
-        # open(filenames[3], "a") do file
-        #     writedlm(file, prefactor * transpose(itp_n.(interpolation_arclengths) + itp_u.(interpolation_arclengths)), ",")
-        # end
         
     end
 end
