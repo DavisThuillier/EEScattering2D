@@ -272,33 +272,33 @@ module FermiSurfaceMesh
         momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
         ## Fermi Profile ##
-        # β::Float64 = sqrt(1 - 4*precision)
-        # energies = Vector{Float64}(undef, perp_num)
-        # energies[1] = 0.0
-        # for i in 2:div(perp_num,2)+1
-        #     energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/perp_num) - 1)
-        #     energies[perp_num - i + 2] = - energies[i] 
-        # end
-        # circshift!(energies, div(perp_num,2))
-        #
-        # for i in eachindex(fermi_surface)
-        #     n = fermi_velocity[i] / norm(fermi_velocity[i])
-        #     for j in 1:perp_num
-        #         #momenta[j, i] = fermi_surface[i] + n * energies[j] 
-        #         momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; bz = bz)
-        #     end
-        # end
+        β::Float64 = sqrt(1 - 4*precision)
+        energies = Vector{Float64}(undef, perp_num)
+        energies[1] = 0.0
+        for i in 2:div(perp_num,2)+1
+            energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/(perp_num-1)) - 1)
+            energies[perp_num - i + 2] = - energies[i] 
+        end
+        circshift!(energies, div(perp_num,2))
+        
+        for i in eachindex(fermi_surface)
+            n = fermi_velocity[i] / norm(fermi_velocity[i])
+            for j in 1:perp_num
+                #momenta[j, i] = fermi_surface[i] + n * energies[j] 
+                momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; bz = bz)
+            end
+        end
 
 
         ## Uniform Mesh ##
-        for i in eachindex(fermi_surface)
-            p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-            p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
+        # for i in eachindex(fermi_surface)
+        #     p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
+        #     p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
 
-            for j in 1:perp_num
-                @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
-            end
-        end
+        #     for j in 1:perp_num
+        #         @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
+        #     end
+        # end
 
         return momenta
     end

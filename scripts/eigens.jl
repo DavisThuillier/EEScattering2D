@@ -78,9 +78,11 @@ function main()
         if abs(real(lambdas[i + 1]) - real(lambdas[i])) < 1e-6
             w1, w2 = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
             i += 1
+            skip = true
         else
             w1 = eigenvecs[:, i] / norm(eigenvecs[:, i])
             w2 = w1
+            skip = false
         end
 
         maximal_contribution = 0.0
@@ -94,11 +96,17 @@ function main()
             end
         end
 
+        
         isodd(maximum_index) ? push!(odd_modes, (i, maximum_index)) : push!(even_modes, (i, maximum_index)) 
+        if skip
+            isodd(maximum_index) ? push!(odd_modes, (i-1, maximum_index)) : push!(even_modes, (i-1, maximum_index))
+        end
+
+
         if i < 10
             println("Eigenvector ", i)
             println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
-            if i == 3 || i == 5
+            if maximum_index in [1, 3, 5]
                 @show abs(fft(w1, 1))
                 @show abs(fft(w1, 3))
                 @show abs(fft(w1, 5))
@@ -108,9 +116,9 @@ function main()
         end
 
 
-        if i < 20
-            plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"))
-            plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
+        if i < 16
+            plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), proj = :polar)
+            #plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
             plot!(plt, thetas, fs_norms, color = :green)
             display(plt)
         end
@@ -122,10 +130,10 @@ function main()
     plot!(spectrum, first.(even_modes), map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
     display(spectrum)
 
-    spectrum2 = plot(last.(odd_modes), -map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes", xlims = (0,50))
-    plot!(spectrum2, last.(even_modes), -map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
-    plot!(spectrum2, title = "T = $(round(temperature, digits = 4))", ylabel = L"- \lambda_m ", xlabel = "m")
-    display(spectrum2)
+    # spectrum2 = plot(last.(odd_modes), -map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes", xlims = (0,50))
+    # plot!(spectrum2, last.(even_modes), -map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
+    # plot!(spectrum2, title = "T = $(round(temperature, digits = 4))", ylabel = L"- \lambda_m ", xlabel = "m")
+    # display(spectrum2)
 end
 
 main()

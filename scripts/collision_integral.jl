@@ -14,7 +14,8 @@ using ProgressBars
 
 function create_files(start_index::Int, end_index::Int)
     umklapp ? mit_umklapp = "umklapp" : mit_umklapp = "ohne_umklapp" 
-    data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_interp_test", "$(num_bins)_$(perp_num)", mit_umklapp, "$(round(temperature, digits = 4))", Dates.format(Dates.now(), "yyyy.mm.dd"))
+    # data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)", "$(num_bins)_$(perp_num)", mit_umklapp, "$(round(temperature, digits = 4))", Dates.format(Dates.now(), "yyyy.mm.dd"))
+    data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_fermi_profile", "$(round(temperature, digits = 4))", "$(num_bins)_$(perp_num)")
     data_dir = data_dir_stem
 
     filenames = map( x -> "Γ" * x * "_$(row_dim)_$(round(temperature, digits = 4))_$(start_index)_to_$(end_index).csv", ["n","u", ""])

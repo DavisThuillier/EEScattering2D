@@ -15,19 +15,21 @@ df(E::Float64, T::Float64) = fd(E, T) * (1 - fd(E,T)) / T
 
 function main()
     band == "free" ? (hasBZ = false) : (hasBZ = true)
-    temperatures = [0.002, 0.004]
+    temperatures = [0.002]
     for temperature in temperatures
         fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim, bz = hasBZ)
         fv = Vector{SVector{2, Float64}}(undef, length(fs))
         FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
         momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, 100, hamiltonian, temperature, prec; bz = hasBZ)
         
-        fd_sum = 0.0
-        for i in 2:(size(momenta)[1] - 1)
-            fd_sum += df(hamiltonian(momenta[i, 1]), temperature) * norm(momenta[i + 1, 1] - momenta[i-1, 1]) / 2
+        
+        for j in 1:size(momenta)[2]
+            p_1 = (momenta[perp_num, j] + momenta[perp_num - 1, j]) / 2
+            p_2 = (momenta[1, j] + momenta[2, j]) / 2
+            weight = fd(hamiltonian(p_2), temperature) - fd(hamiltonian(p_1), temperature)
+            @show weight
         end
-        @show sqrt(variance) / temperature
-        @show fd_sum / norm(fv[1])
+        
 
         points = map(x -> Point(x[1], x[2]), vec(momenta'))
 
@@ -43,7 +45,6 @@ function main()
         reduced_tess = Tessellation(reduced_points, BrillouinZone, reduced_cells)
         reduced_areas = voronoiarea(reduced_tess)
         @show sum(reduced_areas)
-        @show sum(dVs)
 
         grid_vals = Base._linspace(-0.5, 0.5, 200)
         grid = collect(Iterators.product(grid_vals, grid_vals))
@@ -54,8 +55,6 @@ function main()
         plot!(plt, xlabel = L"k_x a_x / 2\pi", ylabel = L"k_y a_y / 2\pi", title = "T = $(temperature)")
         plot!(plt, reduced_tess, fillcolor=:green, linewidth = 0.1)
         display(plt)
-
-        
         
     end
 end
