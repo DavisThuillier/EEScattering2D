@@ -7,9 +7,16 @@ module FermiSurfaceIntegration
 
     fd(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
-    fd_normalization(E::Float64, T::Float64) = 4 * cosh(E / (2 * T))^2
+    # fd_normalization(E::Float64, T::Float64) = 4 * cosh(E / (2 * T))^2
 
-    gaussian_delta(deviation::Float64, sigma_squared::Float64) = exp( - deviation^2 / (2 * sigma_squared)) / (sigma_squared * sqrt(2 * pi))
+    gaussian_delta(deviation::Float64, width::Float64) = exp( - deviation^2 / width) / sqrt(width * pi)
+
+    function gradient(f::Function, k::SVector{2,Float64})
+        dp::Float64 = sqrt(eps(Float64))
+        df_x = f(k + SVector{2}([dp,0])) - f(k + SVector{2}([-dp, 0]))
+        df_y = f(k + SVector{2}([0,dp])) - f(k + SVector{2}([0, -dp]))
+        return SVector{2}([df_x, df_y] / (2 * dp))
+    end
 
     function collision_integral(p1_index::Tuple{Int64, Int64}, k_index::Tuple{Int64, Int64}, momenta::Matrix{SVector{2, Float64}}, energies::Matrix{Float64}, dVs::Matrix{Float64}, hamiltonian::Function, sigma_squared::Float64, T::Float64, q_squared::Float64; umklapp = true)
         p1 = momenta[p1_index[1], p1_index[2]]
@@ -54,7 +61,7 @@ module FermiSurfaceIntegration
             end
         end
         
-        return [(- I2_n + I34_n) * fd(E1, T),  (- I2_u + I34_u) * fd(E1, T)] # fd(p1, T) is a constant in each integral and thus removed
+        return [(- I2_n + I34_n) * fd(E1, T),  (- I2_u + I34_u) * fd(E1, T)] # fd(E1, T) is a constant in each integral and thus removed
     end
 
     "Compute Boltzmann collision integral between each point on FS and the injection point."
@@ -68,7 +75,6 @@ module FermiSurfaceIntegration
         for i in 2:(perp_num - 1)
             central_dp[i] = norm(central_momenta[i + 1] - central_momenta[i - 1]) / 2
         end
-        width::Float64 = sum(central_dp)
 
         energies = hamiltonian.(momenta) 
         

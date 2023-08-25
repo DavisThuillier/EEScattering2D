@@ -374,7 +374,19 @@ module FermiSurfaceMesh
         #     end
         # end
 
-        variance = median(dVs) / 4 # Approximate minimal width squared for delta function normalization
+        mean_dE = 0.0
+        for j in 1:size(momenta)[2]
+            min_dE = 1.0 # Set to be the width of the BZ 
+            dE = 0.0
+            for i in 1:(size(momenta)[1] - 1)
+                dE = abs(hamiltonian(momenta[i + 1,j]) - hamiltonian(momenta[i, j]))
+                dE < min_dE && (min_dE = dE)
+            end
+            mean_dE += min_dE
+        end
+        mean_dE = mean_dE / size(momenta)[2]
+
+        variance = mean_dE^2 / 2 # Approximate minimal width squared for delta function normalization
 
         return momenta, dVs, variance, arclengths[injection_index] .+ get_arclengths(new_fs)
     end

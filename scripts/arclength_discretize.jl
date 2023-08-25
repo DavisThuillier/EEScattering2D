@@ -9,13 +9,26 @@ using LaTeXStrings
 using GeometryBasics
 using VoronoiCells
 
+fd(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
+
+df(E::Float64, T::Float64) = fd(E, T) * (1 - fd(E,T)) / T
+
 function main()
     band == "free" ? (hasBZ = false) : (hasBZ = true)
-    temperatures = [0.004]
+    temperatures = [0.002, 0.004]
     for temperature in temperatures
         fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim, bz = hasBZ)
+        fv = Vector{SVector{2, Float64}}(undef, length(fs))
+        FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
         momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, 100, hamiltonian, temperature, prec; bz = hasBZ)
         
+        fd_sum = 0.0
+        for i in 2:(size(momenta)[1] - 1)
+            fd_sum += df(hamiltonian(momenta[i, 1]), temperature) * norm(momenta[i + 1, 1] - momenta[i-1, 1]) / 2
+        end
+        @show sqrt(variance) / temperature
+        @show fd_sum / norm(fv[1])
+
         points = map(x -> Point(x[1], x[2]), vec(momenta'))
 
         BrillouinZone = Rectangle(Point(-0.5, -0.5), Point(0.5, 0.5))
