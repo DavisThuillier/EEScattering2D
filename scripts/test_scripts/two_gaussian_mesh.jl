@@ -76,6 +76,6 @@ end
 
 for i in range(0.0, 1.0, 21)
     for j in range(0.5, 1.5, 21)
-        main([0.0, i, j],1.0)
+        main([i, j],1.0)
     end
 end
