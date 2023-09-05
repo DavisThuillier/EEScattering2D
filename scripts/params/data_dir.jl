@@ -1,5 +1,5 @@
 const band::String = "gamma"
-const resolution::String = "176_13"
+const resolution::String = "128_33"
 const umklapp::Bool = true
 const umklapp_dir::String = "umklapp"
 !umklapp && (umklapp_dir = "ohne_"*umklapp_dir)

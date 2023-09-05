@@ -1,6 +1,5 @@
 # [src/mesh.jl]
 module FermiSurfaceMesh
-
     export fill_fermi_surface!, fill_fermi_velocity!, discretize
 
     import StaticArrays: SVector
@@ -19,24 +18,8 @@ module FermiSurfaceMesh
     
     collinear_width(T::Float64) = max_width * (1 - (1 - min_width/max_width) * exp( - (T - 0.0025) * width_slope))
 
-    function gaussian_density(x::Float64, sigma::Float64, amplitude::Float64, limit_ratio::Float64)
-        res = amplitude * exp( - (x / sigma)^2)
-        if res <= limit_ratio * amplitude
-            return limit_ratio * amplitude
-        else 
-            return res
-        end 
-    end 
-
-    "Amplitude for density function normalized for N points between 0 point and endpoint."
-    function get_amp(N::Float64, sigma::Float64, ratio::Float64, endpoint::Float64)
-        return N / (sqrt(pi) * sigma * erf(log(1/ratio)) / 2 + (endpoint - sigma * log(1/ratio)) * ratio)
-    end
-
     function get_energy_root(startpoint::SVector{2, Float64}, endpoint::SVector{2, Float64}, hamiltonian::Function; tolerance::Float64 = 0.0001, max_iterations::Int = 10000, level::Float64 = 0.0)
         delta_E::Float64 = 0.0
-        n = endpoint - startpoint
-        n = n / norm(n)
 
         j::Int = 0
         while j < max_iterations
@@ -149,7 +132,7 @@ module FermiSurfaceMesh
         end
         return ds
     end
-    
+
     function secant_method(f::Function, x0::Float64, x1::Float64, iterations::Int)
         x2::Float64 = 0.0
         for i in 1:iterations
@@ -173,7 +156,7 @@ module FermiSurfaceMesh
                 return mid, mid
             end
         end
-        return left, left + 1
+        return left - 1, left
     end
 
     function get_momentum(fermi_surface::Vector{SVector{2,Float64}}, arclengths::Vector{Float64}, s::Float64)
@@ -187,11 +170,14 @@ module FermiSurfaceMesh
 
     cdf(x::Float64, locus::Float64, amp::Float64, sigma::Float64, rat::Float64) = amp * ((x - locus) + 0.5 * rat * erf((x - locus) / sigma))
 
-    function get_gaussian_mesh(fermi_surface::Vector{SVector{2, Float64}}, loci::Vector{Float64}, num_angles::Int, sigma::Float64)
+    function get_gaussian_fs(fermi_surface::Vector{SVector{2, Float64}}, loci::Vector{Float64}, num_angles::Int, sigma::Float64)
         arclengths = get_arclengths(fermi_surface)
         perimeter = arclengths[end]
+
+        loci_indices = zeros(Int, 2 * length(loci))
         loci::Vector{Float64} = mod.(vcat(loci, loci .+ perimeter/2), perimeter)
-        sort!(loci)
+        permutation = sortperm(loci)
+        loci = loci[permutation]
 
         sigma = sigma * perimeter / (2*pi) # Scale width of the peak by total arclength compared to unit circle
 
@@ -203,7 +189,6 @@ module FermiSurfaceMesh
         end
         walls[end] = (loci[1] + perimeter + loci[end]) / 2
         
-
         regions = Vector{Tuple{Float64, Float64}}(undef, 2*length(loci))
         for i in eachindex(regions)
             if isodd(i)
@@ -214,43 +199,54 @@ module FermiSurfaceMesh
         end
         regions[end] = (regions[end][1], regions[end][2] + perimeter)
 
-        
         s_points = Vector{Float64}(undef, 0)
 
         ratio = 0.5
         A = ((num_angles - length(loci)) / perimeter) / (1 + (ratio * length(loci)) / (perimeter) * erf(perimeter / (2 * length(loci) * sigma)))
-        N = 100
+        N = 100 # Secant Method iteration limit
+
         for i in eachindex(regions)
+            isodd(i) && (loci_indices[div(i + 1, 2)] = lastindex(s_points) + 1)
             isapprox(regions[i][2], regions[i][1]) && continue # Skip region if loci overlap
-            locus = (i != length(regions)) ? loci[div(i, 2) + 1] : loci[1] + perimeter
+
+            if i != length(regions)
+                locus = loci[div(i,2) + 1]
+                push!(s_points, regions[i][1])
+            else
+                locus = regions[i][2]
+                push!(s_points, locus)
+            end
+            s_points[end] - s_points[1] >= perimeter / 2 && break
+            
+            # push!(s_points, regions[i][1])
             s = locus
             j = 1
-            
-            push!(s_points, s)
             if isodd(i)
-                while true
-                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) - j, s, (regions[i][2] + regions[i][1]) / 2, N)
-                    s > regions[i][2] && break
+                while j < num_angles
+                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) - j, regions[i][2], locus, N)
+                    s - s_points[1] > perimeter / 2 && break
+                    s >= regions[i][2] && break
                     push!(s_points, s)
                     j += 1
                 end 
             else
-                while true
-                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) + j, (regions[i][1] + regions[i][2])/2, s, N)
-                    regions[i][1] > s && break 
+                while j < num_angles
+                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) + j, locus, regions[i][1], N)
+                    s - s_points[1] > perimeter / 2 && break
+                    regions[i][1] >= s && break 
                     push!(s_points, s)
                     j += 1
                 end
             end
         end
         sort!(s_points)
-
-        mesh = Vector{SVector{2,Float64}}(undef, length(s_points))
-        for i in eachindex(s_points)
+        
+        mesh = Vector{SVector{2,Float64}}(undef, length(s_points) - 1)
+        for i in eachindex(mesh)
             @inbounds mesh[i] = get_momentum(fermi_surface, arclengths, mod(s_points[i], perimeter))
         end
 
-        return mesh
+        return mesh, s_points[1] #loci_indices[invperm(permutation)][1:div(length(loci_indices), 2)]
     end
 
     function get_k_bound(hamiltonian::Function, e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64}, max_iterations = 10000, tolerance = 0.0001; bz::Bool = true)
@@ -318,16 +314,14 @@ module FermiSurfaceMesh
         energies = Vector{Float64}(undef, perp_num)
         energies[1] = 0.0
         for i in 2:div(perp_num,2)+1
-            energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/(perp_num-1)) - 1)
+            @inbounds energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/(perp_num-1)) - 1)
             energies[perp_num - i + 2] = - energies[i] 
         end
         circshift!(energies, div(perp_num,2))
         
         for i in eachindex(fermi_surface)
-            n = fermi_velocity[i] / norm(fermi_velocity[i])
             for j in 1:perp_num
-                #momenta[j, i] = fermi_surface[i] + n * energies[j] 
-                momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; bz = bz)
+                @inbounds momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; bz = bz)
             end
         end
 
@@ -371,36 +365,30 @@ module FermiSurfaceMesh
         end
 
         return dV
-
-
     end
 
     function discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, loci::Vector{Float64}, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz::Bool = true)
         sigma::Float64 = collinear_width(T) / (2 * sqrt(log(2))) # Really, σ sqrt(2) for the Gaussian density
+        perimeter = get_perimeter(fermi_surface)
 
-        new_fs = get_gaussian_mesh(fermi_surface, loci, num_bins, sigma)
-        new_fv = Vector{SVector{2, Float64}}(undef, length(new_fs))
-        fill_fermi_velocity!(new_fv, new_fs, hamiltonian)
+        half_fs, s_primus = get_gaussian_fs(fermi_surface, loci, num_bins, sigma)
+        half_fv = Vector{SVector{2, Float64}}(undef, length(half_fs))
+        fill_fermi_velocity!(half_fv, half_fs, hamiltonian)
 
-        dVs     = zeros(Float64, perp_num, length(new_fs))
-        momenta = temperature_broaden(new_fs, new_fv, hamiltonian, perp_num, T, precision; bz = bz)
+        
+        momenta = temperature_broaden(half_fs, half_fv, hamiltonian, perp_num, T, precision; bz = bz)
+
+        momenta = hcat(momenta, - momenta) # Enforce inversion symmetry
+        dVs     = zeros(Float64, size(momenta))
 
         points = map(x -> Point(x[1], x[2]), vec(momenta))
         BrillouinZone = Rectangle(Point(-0.5, -0.5), Point(0.5, 0.5))
-        # @time tess = voronoicells(points, BrillouinZone)
-        # @time areas = voronoiarea(tess)
+        tess = voronoicells(points, BrillouinZone)
+        areas = voronoiarea(tess)
 
-        # dVs = reshape(areas, size(momenta))
-        # fill!(dVs[begin,:], 0.0)
-        # fill!(dVs[end,:], 0.0)
-
-        for i in 2:(size(momenta)[1] - 1) # Ignore boundary contours
-            for j in 1:size(momenta)[2]
-                #dVs[i,j] = area((momenta[i + 1, j] - momenta[i - 1, j])/ 2, (momenta[i, mod(j, length(new_fs)) + 1] - momenta[i, mod(j - 2, length(new_fs)) + 1]) / 2)
-                # dVs[i,j] = norm(momenta[i + 1, j] - momenta[i - 1, j])  * (norm(momenta[i, mod(j, length(new_fs)) + 1] - momenta[i,j]) + norm(momenta[i, mod(j - 2, length(new_fs)) + 1] - momenta[i,j])) / 4
-                dVs[i,j] = get_dV(i,j, momenta)
-            end
-        end
+        dVs = reshape(areas, size(momenta))
+        fill!(dVs[begin,:], 0.0)
+        fill!(dVs[end,:], 0.0)
 
         mean_dE = 0.0
         for j in 1:size(momenta)[2]
@@ -416,7 +404,16 @@ module FermiSurfaceMesh
 
         variance = mean_dE^2 / 2 # Approximate minimal width squared for delta function normalization
 
-        return momenta, dVs, variance, loci[1] .+ get_arclengths(new_fs)
+        arclengths = get_arclengths(momenta[div(perp_num,2) + 1, :])
+        arclengths = s_primus .+ arclengths
+
+        loci_indices = Vector{Int}(undef, length(loci))
+        for i in eachindex(loci)
+            j1, j2 = minimum_binary_search(arclengths, mod(loci[i], perimeter))
+            loci_indices[i] = div(j1 + j2, 2)
+        end
+
+        return momenta, dVs, variance, arclengths, loci_indices
     end
 
     discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, locus::Float64, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz = true) = discretize(fermi_surface, num_bins, perp_num, [locus], hamiltonian, T, precision; bz = bz)

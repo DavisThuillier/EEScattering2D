@@ -7,6 +7,14 @@ using DataFrames
 using CSV
 import StaticArrays: SVector
 
+function symmetry_metric(mat::Union{Matrix{Float64}, Matrix{ComplexF64}})
+    sym_mat_norm = norm((mat + mat')/2)
+    asym_mat_norm = norm((mat - mat')/2)
+    symmetry = (sym_mat_norm - asym_mat_norm) / (sym_mat_norm + asym_mat_norm) 
+
+    return 0.5 * (symmetry + 1.0)
+end
+
 function main()
     include("params/data_dir.jl")
 
@@ -34,8 +42,7 @@ function main()
     for i in eachindex(n_files)
         start_index = parse(Int, split(basename(n_files[i]), "_")[4])
         end_index   = parse(Int, split(basename(n_files[i])[begin:(end-4)], "_")[6])
-        
-        # full_matrix[start_index:end_index, :] = readdlm(n_files[i], ',', Float64)
+
         n_matrix[start_index:end_index, :] = readdlm(n_files[i], ',', Float64)
         u_matrix[start_index:end_index, :] = readdlm(u_files[i], ',', Float64)
     end
@@ -43,24 +50,19 @@ function main()
     ### Generate Full Matrix ###
     n_matrix[2 + div(matrix_dim, 8): div(matrix_dim, 4) + 1, :] = circshift( reverse( n_matrix[1:div(matrix_dim, 8), :]), (0, 2 * div(matrix_dim, 8) + 1) )
     u_matrix[2 + div(matrix_dim, 8): div(matrix_dim, 4) + 1, :] = circshift( reverse( u_matrix[1:div(matrix_dim, 8), :]), (0, 2 * div(matrix_dim, 8) + 1) )
-    # full_matrix[2 + div(matrix_dim, 8): div(matrix_dim, 4) + 1, :] = circshift( reverse( full_matrix[1:div(matrix_dim, 8), :]), (0, 2 * div(matrix_dim, 8) + 1) )
 
     n_matrix[1 + div(matrix_dim, 4) : div(matrix_dim, 2), :] = circshift( n_matrix[1 : div(matrix_dim, 4), :], (0, div(matrix_dim, 4)))
     u_matrix[1 + div(matrix_dim, 4) : div(matrix_dim, 2), :] = circshift( u_matrix[1 : div(matrix_dim, 4), :], (0, div(matrix_dim, 4)))
-    # full_matrix[1 + div(matrix_dim, 4) : div(matrix_dim, 2), :] = circshift( full_matrix[1 : div(matrix_dim, 4), :], (0, div(matrix_dim, 4)))
 
     n_matrix[1 + div(matrix_dim, 2) : matrix_dim, :] = circshift( n_matrix[1 : div(matrix_dim, 2), :], (0, div(matrix_dim, 2)))
     u_matrix[1 + div(matrix_dim, 2) : matrix_dim, :] = circshift( u_matrix[1 : div(matrix_dim, 2), :], (0, div(matrix_dim, 2)))
-    # full_matrix[1 + div(matrix_dim, 2) : matrix_dim, :] = circshift( full_matrix[1 : div(matrix_dim, 2), :], (0, div(matrix_dim, 2)))
 
-    full_matrix = ( n_matrix + u_matrix) # Prefactor corresponds to the differential in the angular integral when taking the product of full_matrix and a vector
+    full_matrix = ( n_matrix + u_matrix) 
+    # full_matrix = n_matrix
 
-    sym_mat_norm = norm((full_matrix + full_matrix')/2)
-    asym_mat_norm = norm((full_matrix - full_matrix')/2)
-
-    symmetry = (sym_mat_norm - asym_mat_norm) / (sym_mat_norm + asym_mat_norm) 
-    symmetry = 0.5 * (symmetry + 1.0)
-    @show symmetry
+    @show symmetry_metric(n_matrix)
+    @show symmetry_metric(u_matrix)
+    @show symmetry_metric(full_matrix)
 
     # full_matrix = (full_matrix' + full_matrix) / 2 # Symmetrizing matrix
     for i in eachindex(full_matrix[:, 1])

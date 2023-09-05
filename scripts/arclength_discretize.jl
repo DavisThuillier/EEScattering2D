@@ -22,42 +22,37 @@ function main()
         FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
 
         perimeter = last(FermiSurfaceMesh.get_arclengths(fs))
-        loci = [0.1, 0.25] * perimeter
-
-        @time momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, loci, hamiltonian, temperature, prec; bz = hasBZ)
-        
-        # for j in 1:size(momenta)[2]
-        #     p_1 = (momenta[perp_num, j] + momenta[perp_num - 1, j]) / 2
-        #     p_2 = (momenta[1, j] + momenta[2, j]) / 2
-        #     weight = fd(hamiltonian(p_2), temperature) - fd(hamiltonian(p_1), temperature)
-        #     @show weight
-        # end
-        
-
-        # points = map(x -> Point(x[1], x[2]), vec(momenta'))
-
-        # BrillouinZone = Rectangle(Point(-0.55, -0.55), Point(0.55, 0.55))
-        # tess = voronoicells(points, BrillouinZone)
-        # areas = voronoiarea(tess)
-
-        # modulus = size(momenta)[2]
-        # reduced_cells = tess.Cells[modulus+1:end-modulus]
-        # #reduced_cells = tess.Cells[1:modulus]
-        # reduced_points = points[modulus+1:end-modulus]
-        # #reduced_points = points[1:modulus]
-        # reduced_tess = Tessellation(reduced_points, BrillouinZone, reduced_cells)
-        # reduced_areas = voronoiarea(reduced_tess)
-        # @show sum(reduced_areas)
-
         grid_vals = Base._linspace(-0.5, 0.5, 200)
         grid = collect(Iterators.product(grid_vals, grid_vals))
 
-        plt = heatmap(grid_vals, grid_vals, hamiltonian.(SVector{2}.(grid)), colormap = :nuuk, colorbar_title = latexstring("\$\\epsilon(\\vec{k}) / \\epsilon_F\$"))
-        plot!(plt, first.(fs), last.(fs))
-        plot!(plt, first.(momenta), last.(momenta), aspectratio = 1.0, seriestype = :scatter, markershape= :cross, markersize = 0.2, color = :black, legend = false, xlims = (-0.5, 0.5), ylims = (-0.5, 0.5))
-        plot!(plt, xlabel = L"k_x a_x / 2\pi", ylabel = L"k_y a_y / 2\pi", title = "T = $(temperature)")
-        # plot!(plt, reduced_tess, color=:green, linewidth = 0.1)
-        display(plt)
+        loci = [0.1] * perimeter
+        momenta, dVs, variance, arclengths, loci_indices = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, loci, hamiltonian, temperature, prec; bz = hasBZ)
+        
+
+        rect = Rectangle(Point2(-0.51,-0.51), Point2(0.51,0.51))
+        points = map(x -> Point(x[1], x[2]), vec(unique(momenta)))
+
+        t_num = size(momenta)[1]  
+        s_num = size(momenta)[2]
+        for i in 1:10:s_num    
+            loci = [arclengths[begin], arclengths[i]]    
+
+            mesh_1, _, variance, _ , loci_indices_1 = FermiSurfaceMesh.discretize(fs, s_num, t_num, loci, hamiltonian, temperature, prec)
+            sizeof(unique(mesh_1)) != sizeof(mesh_1) && println("Nonunique")
+
+            points = map(x -> Point(x[1], x[2]), vec(mesh_1'))
+            tess = voronoicells(points, rect)
+            modulus = size(mesh_1)[2]
+            reduced_cells = tess.Cells[modulus+1:end-modulus]
+            reduced_points = points[modulus+1:end-modulus]
+            
+            reduced_tess = Tessellation(reduced_points, rect, reduced_cells)
+
+            plt = plot(first.(mesh_1), last.(mesh_1), aspectratio = 1.0, seriestype = :scatter, markershape= :cross, markersize = 0.2, color = :black, legend = false, xlims = (-0.5, 0.5), ylims = (-0.5, 0.5))
+            plot!(plt, xlabel = L"k_x a_x / 2\pi", ylabel = L"k_y a_y / 2\pi", title = "T = $(temperature)")
+            plot!(plt, reduced_tess, color=:green, linewidth = 0.1)
+            display(plt)
+        end     
         
     end
 end

@@ -40,27 +40,9 @@ function fft(v::Union{Vector{ComplexF64}, Vector{Float64}}, m::Int)
     return int
 end
 
-function main()
-    include("params/data_dir.jl")
-    @show data_dir
-    filename::String = joinpath(data_dir, "Γ_full_$(matrix_dim)_$(temperature).csv")
-
-    if isfile(filename)
-        full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
-        fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
-        
-        fs = SVector{2}.(fermi.kx, fermi.ky)
-        fs_norms = norm.(fs)
-        thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
-
-
-        lambdas = real.(reverse(eigvals(full_matrix))) * 5.25e3 # Rates in ps^-1
-        eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
-
-    else
-        println("Data file of full collision matrix does not exist.")
-        return nothing
-    end
+function display_modes(lambdas, eigenvecs, fs)
+    fs_norms = norm.(fs)
+    thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
 
     println("### Mode Analysis ###")
     maximal_contribution::Float64 = 0.0
@@ -73,7 +55,9 @@ function main()
     i = 1
     n = 100
     scale = 1.0
-    while i < n
+    maximum_index = 0
+
+    while maximum_index != 2
         
         if abs(real(lambdas[i + 1]) - real(lambdas[i])) < 1e-6
             w1, w2 = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
@@ -103,25 +87,20 @@ function main()
         end
 
 
-        if i < 10
-            println("Eigenvector ", i)
-            println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
-            if maximum_index in [1, 3, 5]
-                @show abs(fft(w1, 1))
-                @show abs(fft(w1, 3))
-                @show abs(fft(w1, 5))
-            end
-
-            println()
+        println("Eigenvector ", i)
+        println("lambda = ", round(lambdas[i] - lambdas[1], digits = 5), "; maximal contribution: m = ", maximum_index)
+        if maximum_index in [1, 3, 5]
+            @show abs(fft(w1, 1))
+            @show abs(fft(w1, 3))
+            @show abs(fft(w1, 5))
         end
 
+        println()
 
-        if i < 16
-            plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), proj = :polar)
-            #plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
-            plot!(plt, thetas, fs_norms, color = :green)
-            display(plt)
-        end
+        plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), proj = :polar)
+        #plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
+        plot!(plt, thetas, fs_norms, color = :green)
+        display(plt)
         i += 1
     end
 
@@ -129,6 +108,35 @@ function main()
     spectrum = plot(first.(odd_modes), map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes")
     plot!(spectrum, first.(even_modes), map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
     display(spectrum)
+end
+
+function main()
+    include("params/data_dir.jl")
+    @show data_dir
+    filename::String = joinpath(data_dir, "Γ_full_$(matrix_dim)_$(temperature).csv")
+
+    if isfile(filename)
+        full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
+        symmetrized_matrix = (full_matrix + full_matrix' )/ 2
+    
+        plt = heatmap
+
+        fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
+        
+        fs = SVector{2}.(fermi.kx, fermi.ky)
+
+        lambdas = real.(reverse(eigvals(full_matrix))) * 5.25e3 # Rates in ps^-1
+        eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
+
+        display_modes(lambdas, eigenvecs, fs)
+
+
+    else
+        println("Data file of full collision matrix does not exist.")
+        return nothing
+    end
+
+  
 
     # spectrum2 = plot(last.(odd_modes), -map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes", xlims = (0,50))
     # plot!(spectrum2, last.(even_modes), -map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")

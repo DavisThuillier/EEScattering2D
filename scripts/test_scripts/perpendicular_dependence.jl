@@ -4,7 +4,11 @@ using StaticArrays
 using LaTeXStrings
 
 function main()
+    n_t = 41
+    n_s = 208
+
     fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim)
+    perimeter = FermiSurfaceMesh.get_perimeter(fs)
     fv = Vector{SVector{2, Float64}}(undef, length(fs))
     FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
 
@@ -13,48 +17,22 @@ function main()
     c::Float64  = 12.68e-10 # z-axis dimension of unit cell in meters
 
     alpha = 1 / (ef * e0 * c) # Characteristic non-dimensionalized energy scale for interaction matrix element
-    prefactor = alpha^2 
     q_squared = alpha * get_dos(fs, fv) / (2pi)^2 # Thomas-Fermi screening wavevector squared 
 
-    momenta, dVs, variance, arclengths = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, 1, hamiltonian, temperature, prec)
+    full_matrix = Matrix{Float64}(undef, n_t - 2, n_t - 2)
 
-    plt = plot(first.(momenta), last.(momenta), seriestype= :scatter, markersize= 0.05, legend = false, markershape = :diamond, aspect_ratio = :equal, title = "T = $(round(temperature, digits = 4))", xlims = (-0.75,0.75), ylims = (-0.75,0.75))
-    plot!(plt, first.(fs), last.(fs), color = :blue)
-    display(plt)
-
-    energies = hamiltonian.(momenta)
-
-    full_matrix = Matrix{Float64}(undef, perp_num, perp_num)
-    df_matrix   = Matrix{Float64}(undef, size(momenta))
-
-    t_1 = 2
-    
-    # for i in CartesianIndices(momenta)
-    #     k_index = (i[1], i[2])
-    #     integral = FermiSurfaceIntegration.collision_integral((t_1, s_1), k_index, momenta, energies, dVs, hamiltonian, variance, temperature, q_squared, umklapp = umklapp)
-    #     full_matrix[i[1], i[2]] = sum(integral)
-    #     df_matrix[i[1], i[2]] = 1 / FermiSurfaceIntegration.fd_normalization(hamiltonian(momenta[i[1], i[2]]), temperature)
-    # end
-
-    # @show df_matrix[1, 1] / df_matrix[div(perp_num, 2), 1]
-
-    # plt = scatter(first.(momenta), last.(momenta), zcolor = full_matrix, markersize = 1, markerstrokewidth = 0.0, markershape = :diamond)
-
-    # plt = heatmap(full_matrix, cmap = :berlin)
-    # #plt = surface(first.(momenta), last.(momenta), full_matrix)
-    # plot!(plt, xlabel = L"s_k", ylabel = L"t_k")
-    # display(plt)
-
-    # plt2 = heatmap(df_matrix, cmap = :berlin)
-    # display(plt2)
-
-    s_1 = 1
-    for s_2 in 1:num_bins
+    s_1 = 0.0
+    for s_2 in 1:100
+        loci = [s_1, s_2 * perimeter / n_s]
+        integration_mesh, mesh_dVs, mesh_variance, arclengths , loci_indices = FermiSurfaceMesh.discretize(fs, n_s, n_t, loci, hamiltonian, temperature, prec) 
 
         integral::SVector{2,Float64} = [0.0,0.0]
-        for i in eachindex(momenta[:, s_1])
-            for j in eachindex(momenta[:, s_2])
-                integral = FermiSurfaceIntegration.collision_integral((i, s_1), (j, s_2), momenta, energies, dVs, hamiltonian, variance, temperature, q_squared, umklapp = umklapp)
+        for i in 2:(n_t-1)
+            p1 = (integration_mesh[end,loci_indices[1]] - integration_mesh[begin, loci_indices[1]]) * i / n_t + integration_mesh[begin, loci_indices[1]]
+            energies = hamiltonian.(energies)
+            for j in 2:(n_t-1)
+                k = (integration_mesh[end,loci_indices[2]] - integration_mesh[begin, loci_indices[2]]) * j / n_t + integration_mesh[begin, loci_indices[2]]
+                integral = FermiSurfaceIntegration.collision_integral(p1, k, integration_mesh, energies, dVs, hamiltonian, variance, temperature, q_squared, umklapp = umklapp)
                 full_matrix[i,j] = sum(integral)
             end
         end
