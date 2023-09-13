@@ -9,6 +9,7 @@ module FermiSurfaceMesh
     using ProgressBars
     using VoronoiCells
     import GeometryBasics: Point
+    import StatsBase: countmap
 
     ## Collinear width parameters ##
     const max_width::Float64 = 0.4 # Maximum width of collinear region in radians
@@ -43,11 +44,12 @@ module FermiSurfaceMesh
 
     function generate_fermi_surface(hamiltonian::Function, num_points::Int; bz::Bool = true)
         angles = collect(range(0.0, 2*pi, num_points * 10))
+        pop!(angles)
         fermi_surface = Vector{SVector{2,Float64}}(undef, length(angles))
         fill_fermi_surface!(fermi_surface, angles, hamiltonian; bz = bz)
 
         s = get_arclengths(fermi_surface)
-        step::Float64 = last(s) / (num_points - 1)
+        step::Float64 = last(s) / num_points
 
         uniform_fermi_surface = Vector{SVector{2, Float64}}(undef, num_points)
         uniform_fermi_surface[1] = fermi_surface[1]
@@ -115,11 +117,11 @@ module FermiSurfaceMesh
         return arclengths
     end
 
-    "Perimeter assuming curve is closed."
     function get_perimeter(curve::Vector{SVector{2, Float64}})
         return last(get_arclengths(curve))
     end
 
+    "Assuming the curve is closed."
     function get_ds(curve::Vector{SVector{2, Float64}})
         ds = Vector{Float64}(undef, length(curve))
         if length(curve) > 1
@@ -133,12 +135,12 @@ module FermiSurfaceMesh
         return ds
     end
 
-    function secant_method(f::Function, x0::Float64, x1::Float64, iterations::Int)
+    function secant_method(f::Function, x0::Float64, x1::Float64, iterations::Int, precision::Float64)
         x2::Float64 = 0.0
         for i in 1:iterations
             x2 = x1 - f(x1) * (x1 - x0) / (f(x1) - f(x0))
             x0, x1 = x1, x2
-            abs(x0 - x1) < 1e-8 && break
+            abs(x0 - x1) < precision && break
         end 
         return x2
     end
@@ -223,7 +225,7 @@ module FermiSurfaceMesh
             j = 1
             if isodd(i)
                 while j < num_angles
-                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) - j, regions[i][2], locus, N)
+                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) - j, regions[i][2], locus, N, 1e-8)
                     s - s_points[1] > perimeter / 2 && break
                     s >= regions[i][2] && break
                     push!(s_points, s)
@@ -231,7 +233,7 @@ module FermiSurfaceMesh
                 end 
             else
                 while j < num_angles
-                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) + j, locus, regions[i][1], N)
+                    s = secant_method(x -> cdf(x, locus, A, sigma, ratio) + j, locus, regions[i][1], N, 1e-8)
                     s - s_points[1] > perimeter / 2 && break
                     regions[i][1] >= s && break 
                     push!(s_points, s)
@@ -249,36 +251,38 @@ module FermiSurfaceMesh
         return mesh, s_points[1] #loci_indices[invperm(permutation)][1:div(length(loci_indices), 2)]
     end
 
-    function get_k_bound(hamiltonian::Function, e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64}, max_iterations = 10000, tolerance = 0.0001; bz::Bool = true)
+    function get_k_bound(hamiltonian::Function, e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64}; max_iterations = 10000, tolerance = 0.0001, bz::Bool = true)
         e_bound  == 0.0 && return fs_k
 
         n = velocity / norm(velocity)
-        step = (e_bound / norm(velocity)) / 2
+        step = (e_bound / norm(velocity))
 
         i::Int = 0
-        i_limit::Int = abs(div(1, step)) # Number of step corresponding to half-width of Brillouin zone
+        i_limit::Int = abs(div(0.5, step)) # Number of step corresponding to half-width of Brillouin zone
 
         endpoint = fs_k
         startpoint = fs_k
         
         if e_bound > 0
-            while i < i_limit && hamiltonian(endpoint) < e_bound
+            while hamiltonian(endpoint) < e_bound && i < i_limit
                 endpoint += step * n
                 bz && (abs(endpoint[1]) > 0.5 || abs(endpoint[2]) > 0.5) && break
                 i += 1
             end
+            endpoint += step * n
         else
-            while i < i_limit && hamiltonian(startpoint) > e_bound
+            while hamiltonian(startpoint) > e_bound && i < i_limit
                 startpoint += step * n
                 i += 1
             end
+            startpoint += step * n 
         end
 
         j::Int = 0
         while j < max_iterations
             midpoint = (startpoint + endpoint) / 2
             delta_E = hamiltonian(midpoint) - e_bound
-            norm(endpoint - startpoint) / 2 < tolerance && break
+            norm(startpoint - endpoint) < tolerance && break
             
             if sign(delta_E) == sign(hamiltonian(startpoint) - e_bound)
                 startpoint = midpoint
@@ -317,24 +321,15 @@ module FermiSurfaceMesh
             @inbounds energies[i] = T * log(1 / (fd(energies[i - 1], T) - β/(perp_num-1)) - 1)
             energies[perp_num - i + 2] = - energies[i] 
         end
+        
         circshift!(energies, div(perp_num,2))
         
-        for i in eachindex(fermi_surface)
+        tolerance = abs(energies[2] / e_max) * T * 1e-2
+        for i in eachindex(fermi_surface)            
             for j in 1:perp_num
-                @inbounds momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; bz = bz)
+                @inbounds momenta[j,i] = get_k_bound(hamiltonian, energies[j], fermi_surface[i], fermi_velocity[i]; tolerance = tolerance, bz = bz)
             end
         end
-
-
-        ## Uniform Mesh ##
-        # for i in eachindex(fermi_surface)
-        #     p_min = get_k_bound(hamiltonian, -e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-        #     p_max = get_k_bound(hamiltonian, e_max, fermi_surface[i], fermi_velocity[i]; bz = bz)
-
-        #     for j in 1:perp_num
-        #         @inbounds momenta[j, i] = p_min + (p_max - p_min) * (j - 1) / (perp_num - 1)
-        #     end
-        # end
 
         return momenta
     end
@@ -374,11 +369,17 @@ module FermiSurfaceMesh
         half_fs, s_primus = get_gaussian_fs(fermi_surface, loci, num_bins, sigma)
         half_fv = Vector{SVector{2, Float64}}(undef, length(half_fs))
         fill_fermi_velocity!(half_fv, half_fs, hamiltonian)
-
         
         momenta = temperature_broaden(half_fs, half_fv, hamiltonian, perp_num, T, precision; bz = bz)
-
         momenta = hcat(momenta, - momenta) # Enforce inversion symmetry
+
+        # @show map(x -> findall(isequal(x), momenta), collect(keys(filter(kv -> kv.second > 1, countmap(momenta)))) )
+
+        arclengths = get_arclengths(momenta[div(perp_num,2) + 1, :])
+        arclengths = s_primus .+ arclengths
+
+        size(unique(momenta)) != size(vec(momenta)) && (println("Duplicate points generated in mesh."); return nothing)
+
         dVs     = zeros(Float64, size(momenta))
 
         points = map(x -> Point(x[1], x[2]), vec(momenta))
@@ -404,9 +405,6 @@ module FermiSurfaceMesh
 
         variance = mean_dE^2 / 2 # Approximate minimal width squared for delta function normalization
 
-        arclengths = get_arclengths(momenta[div(perp_num,2) + 1, :])
-        arclengths = s_primus .+ arclengths
-
         loci_indices = Vector{Int}(undef, length(loci))
         for i in eachindex(loci)
             j1, j2 = minimum_binary_search(arclengths, mod(loci[i], perimeter))
@@ -419,9 +417,5 @@ module FermiSurfaceMesh
     discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, locus::Float64, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz = true) = discretize(fermi_surface, num_bins, perp_num, [locus], hamiltonian, T, precision; bz = bz)
     
     discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz = true) = discretize(fermi_surface, num_bins, perp_num, [get_arclengths(fermi_surface)[injection_index]], hamiltonian, T, precision; bz = bz)
-
-    #####################
-    ### Old Functions ###
-    #####################
 
 end

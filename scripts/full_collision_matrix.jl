@@ -18,9 +18,17 @@ end
 function main()
     include("params/data_dir.jl")
 
+    fs_filename::String  = joinpath(data_dir, "fermi_surface_$(matrix_dim).csv")
+    fermi = CSV.read(fs_filename, DataFrames.DataFrame)
+    fs = SVector{2}.(fermi.kx, fermi.ky)
+    ds = FermiSurfaceMesh.get_ds(fs)
+    fv = SVector{2}.(fermi.vx, fermi.vy)
+
     n_stem = joinpath(data_dir, "Γn_$(matrix_dim)_$(temperature)")
     u_stem = joinpath(data_dir, "Γu_$(matrix_dim)_$(temperature)")
     full_stem = joinpath(data_dir, "Γ_$(matrix_dim)_$(temperature)")
+
+    @show readdir(data_dir)
 
     n_files = String[]
     u_files = String[]
@@ -66,7 +74,7 @@ function main()
 
     # full_matrix = (full_matrix' + full_matrix) / 2 # Symmetrizing matrix
     for i in eachindex(full_matrix[:, 1])
-        full_matrix[i,i] -= sum(full_matrix[i,:])
+        full_matrix[i,i] -= sum(full_matrix[:, i]) #dot(full_matrix[i,:], sqrt.(ds ./ norm.(fv))) #/ sqrt(norm(fv[i]) * ds[i])
     end
 
     outfile = "Γ_full_$(matrix_dim)_$(temperature).csv"

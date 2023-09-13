@@ -75,52 +75,6 @@ module FermiSurfaceIntegration
         return [(- I2_n + I34_n) * fd(E1, T),  (- I2_u + I34_u) * fd(E1, T)] # fd(E1, T) is a constant in each integral and thus removed
     end
 
-    # function collision_integral_old(p1_index::Tuple{Int, Int}, k_index::Tuple{Int,Int}, integration_mesh::Matrix{SVector{2, Float64}}, energies::Matrix{Float64}, dVs::Matrix{Float64}, hamiltonian::Function, sigma_squared::Float64, T::Float64, q_squared::Float64; umklapp = true)
-    #     p1::SVector{2,Float64} = integration_mesh[p1_index[1], p1_index[2]]
-    #     k::SVector{2,Float64} = integration_mesh[k_index[1], k_index[2]]
-        
-    #     I2_n::Float64 = 0.0
-    #     I2_u::Float64 = 0.0
-    #     I34_n::Float64 = 0.0
-    #     I34_u::Float64 = 0.0
-
-    #     P = p1 + k # Total momentum of scatterers
-    #     Q = p1 - k # Momentum difference for p1 -> p1'
-
-    #     E1 = hamiltonian(p1)
-    #     Ek = hamiltonian(k)
-    #     E_sum::Float64 = E1 + Ek
-    #     E_diff::Float64 = E1 - Ek
-
-    #     mod_shift = SVector{2}([0.5, 0.5]) # For shifting the wavevector over before taking the modulus with respect to the first Brillouin Zone
-
-    #     for i in 2:(size(integration_mesh)[1] - 1)
-    #         for j in 1:size(integration_mesh)[2]
-    #             @inbounds p1_prime = integration_mesh[i,j]
-    #             p2_prime = umklapp ? mod.(mod_shift + P - p1_prime, 1.0) - mod_shift : P - p1_prime
-    #             E1_prime = energies[i,j]
-    #             E2_prime = hamiltonian(p2_prime)
-    #             if abs((P - p1_prime)[1]) > 0.5 || abs((P - p1_prime)[2]) > 0.5 # Detect whether this is an umklapp event
-    #                 I2_u += fd(Ek, T) * (1 - fd(E1_prime, T)) * (1 - fd(E2_prime, T)) * dVs[i, j] * gaussian_delta(E_sum - E1_prime - E2_prime, sigma_squared) / (norm(p1_prime - p1)^2 + q_squared)^2
-    #             else
-    #                 I2_n += fd(Ek, T) * (1 - fd(E1_prime, T)) * (1 - fd(E2_prime, T)) * dVs[i, j] * gaussian_delta(E_sum - E1_prime - E2_prime, sigma_squared) / (norm(p1_prime - p1)^2 + q_squared)^2
-    #             end
-
-    #             @inbounds p2 = integration_mesh[i,j]
-    #             p2_prime = umklapp ? mod.(mod_shift + Q + p2, 1.0) - mod_shift : Q + p2
-    #             E2 = energies[i,j]
-    #             E2_prime = hamiltonian(p2_prime)
-    #             if abs((Q + p2)[1]) > 0.5 || abs((Q + p2)[2]) > 0.5 # Detect whether this is an umklapp event
-    #                 I34_u += 2 * fd(E2, T) * (1 - fd(Ek, T)) * (1 - fd(E2_prime, T)) * dVs[i,j] * gaussian_delta((E_diff + E2 - E2_prime), sigma_squared) / (norm(p1 - k)^2 + q_squared)^2
-    #             else
-    #                 I34_n += 2 * fd(E2, T) * (1 - fd(Ek, T)) * (1 - fd(E2_prime, T)) * dVs[i,j] * gaussian_delta((E_diff + E2 - E2_prime), sigma_squared) / (norm(p1 - k)^2 + q_squared)^2
-    #             end
-    #         end
-    #     end
-        
-    #     return [(- I2_n + I34_n) * fd(E1, T),  (- I2_u + I34_u) * fd(E1, T)] # fd(E1, T) is a constant in each integral and thus removed
-    # end
-
     "Compute Boltzmann collision integral between each point on FS and the injection point."
 
     function contracted_integral!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, uniform_fs::Vector{SVector{2,Float64}}, momenta::Matrix{SVector{2, Float64}}, hamiltonian::Function, T::Float64, q_squared::Float64; umklapp = true)

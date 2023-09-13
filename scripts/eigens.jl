@@ -40,8 +40,9 @@ function fft(v::Union{Vector{ComplexF64}, Vector{Float64}}, m::Int)
     return int
 end
 
-function display_modes(lambdas, eigenvecs, fs)
+function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::Vector{SVector{2,Float64}})
     fs_norms = norm.(fs)
+
     thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
 
     println("### Mode Analysis ###")
@@ -118,25 +119,34 @@ function main()
     if isfile(filename)
         full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
         symmetrized_matrix = (full_matrix + full_matrix' )/ 2
-    
-        plt = heatmap
 
         fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
-        
         fs = SVector{2}.(fermi.kx, fermi.ky)
+        fv = SVector{2}.(fermi.vx, fermi.vy)
+
+        arclengths = FermiSurfaceMesh.get_arclengths(fs)
+        perimeter  = last(arclengths)
+        pop!(arclengths)
+
+        # plt = plot(arclengths * 2pi / perimeter, 2e-6 .+ full_matrix[1, :], proj = :polar)
+        # display(plt)
+        # return nothing
 
         lambdas = real.(reverse(eigvals(full_matrix))) * 5.25e3 # Rates in ps^-1
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
 
-        display_modes(lambdas, eigenvecs, fs)
+        restoration_factor = sqrt.(norm.(fv) ./ FermiSurfaceMesh.get_ds(fs))
+        for i in 1:size(eigenvecs)[2]
+            eigenvecs[:, i] = eigenvecs[:, i] .* restoration_factor
+        end
+
+        display_modes(lambdas, eigenvecs, fs, fv)
 
 
     else
         println("Data file of full collision matrix does not exist.")
         return nothing
     end
-
-  
 
     # spectrum2 = plot(last.(odd_modes), -map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes", xlims = (0,50))
     # plot!(spectrum2, last.(even_modes), -map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")

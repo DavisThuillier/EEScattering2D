@@ -2,23 +2,29 @@
 # author: Davis Thuillier
 # created: 10 July 2023
 
+# include(joinpath("..", "src", "EEScattering2D.jl"))
 using EEScattering2D
 
 import StaticArrays: SVector
 import LinearAlgebra: norm
 import Dates
-using Plots
 using Interpolations
 using DelimitedFiles
-using ProgressBars
 
-function create_files(start_index::Int, end_index::Int)
+function input_handling()
+    if length(ARGS) != 5
+        println("Insufficient number of arguments.")
+        println("Format: collision_integral.jl [T::F64] [start::Int] [end::Int] [n_s::Int] [n_t::Int]")
+        exit()
+    end
+end
+
+function create_files(temperature::Float64, start_index::Int, end_index::Int, num_bins::Int, perp_num::Int)
     umklapp ? mit_umklapp = "umklapp" : mit_umklapp = "ohne_umklapp" 
-    # data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)", "$(num_bins)_$(perp_num)", mit_umklapp, "$(round(temperature, digits = 4))", Dates.format(Dates.now(), "yyyy.mm.dd"))
-    data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_fermi_profile", "$(round(temperature, digits = 4))", "$(num_bins)_$(perp_num)")
+    data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_fermi_profile", "$(round(temperature, digits = 8))", "$(num_bins)_$(perp_num)")
     data_dir = data_dir_stem
 
-    filenames = map( x -> "Γ" * x * "_$(row_dim)_$(round(temperature, digits = 4))_$(start_index)_to_$(end_index).csv", ["n","u"])
+    filenames = map( x -> "Γ" * x * "_$(row_dim)_$(round(temperature, digits = 8))_$(start_index)_to_$(end_index).csv", ["n","u"])
     
     # Check if any of the output files exist in the desired directory
     j = 0
@@ -34,14 +40,14 @@ function create_files(start_index::Int, end_index::Int)
         open(filenames[i], "w") do f
             # Clears file for writing
         end
-        println("Data will be written to ", filenames[i])
+        # println("Data will be written to ", filenames[i])
     end
     
     return data_dir, filenames
 end
 
-function main(start_index::Int, end_index::Int) 
-    data_dir, filenames = create_files(start_index, end_index)
+function main() 
+    data_dir, filenames = create_files(temperature, start_index, end_index, num_bins, perp_num)
 
     fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim)
     fv = Vector{SVector{2, Float64}}(undef, length(fs))
@@ -68,12 +74,9 @@ function main(start_index::Int, end_index::Int)
     interpolation_arclengths = FermiSurfaceMesh.get_arclengths(fs)
     perimeter = last(interpolation_arclengths)
 
-    for i in ProgressBar(start_index:end_index)
-        momenta, dVs , var , arclengths, _ = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, i, hamiltonian, temperature, prec)
+    for i in start_index:end_index
+        momenta, _ , _ , arclengths, _ = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, i, hamiltonian, temperature, prec)
 
-        # plt = plot(first.(momenta), last.(momenta), seriestype= :scatter, markersize= 0.05, legend = false, markershape = :diamond, aspect_ratio = :equal, title = "T = $(round(temperature, digits = 4))", xlims = (-0.75,0.75), ylims = (-0.75,0.75))
-        # plot!(plt, first.(fs), last.(fs), color = :blue)
-        # display(plt)
         gamma = Matrix{Float64}(undef, size(momenta)[2] + 2, 3)
         
         FermiSurfaceIntegration.contracted_integral!(gamma, arclengths, perimeter, fs, momenta, hamiltonian, temperature, q_squared, umklapp = umklapp)
@@ -101,4 +104,12 @@ end
 include("params/params.jl")
 include(joinpath(@__DIR__, "params", "$(band).jl"))
 
-main(1, div(row_dim, 8) + 1)
+input_handling()
+
+const temperature = parse(Float64, ARGS[1])
+const start_index = parse(Int,     ARGS[2])
+const end_index   = parse(Int,     ARGS[3])
+const num_bins    = parse(Int,     ARGS[4])
+const perp_num    = parse(Int,     ARGS[5])
+
+main()
