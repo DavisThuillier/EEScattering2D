@@ -11,7 +11,7 @@ using Statistics
 
 
 function main()
-    fs_filename::String  = joinpath(data_dir, "fermi_surface_$(matrix_dim).csv")
+    fs_filename::String  = joinpath(data_dir, "fermi_surface_$(interpolation_dim).csv")
 
     if isfile(mat_filename)
         full_matrix::Matrix{Float64} = readdlm(mat_filename, ',', Float64)
@@ -25,6 +25,7 @@ function main()
         σ = Matrix{ComplexF64}(undef, 2, 2) # Conductivity tensor
 
         lambdas = reverse(eigvals(full_matrix))
+        lambdas = lambdas .- lambdas[1]
 
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2)
 
@@ -36,13 +37,16 @@ function main()
             vy[i] = dot(fermi.vy ./ sqrt_speeds, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i]) 
         end
 
-        @show abs(vx[3]) / abs(vx[5])
+        # @show abs.(vx[1:10])
+        # @show lambdas[1:5]
 
         # Enforce that the overlap with the m = 0 mode is null
         vx[1] = 0.0
         vy[1] = 0.0
 
         inverse_times = diagm(1 ./ lambdas)
+        inverse_times[1,1] = 0.0
+        # @show findmax(abs.(vx))
   
         # σ[1,1] = real.(inner_product(vx, fs, hamiltonian, temperature))
         # σ[1,2] = real.(inner_product(vx, inverse_times * vy, fs, hamiltonian, temperature))
@@ -59,9 +63,10 @@ function main()
 
         # prefactor = 193.468 * 4
 
-        println("T = ", temperature)
+        T_F = 6326.35
+        println("T = ", temperature * T_F)
         println("σ = ", σ)
-        println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2))
+        println("ρxx = ", 1 / (- (σ[1,1] + σ[2,2])/2) * 1e11)
 
 
     else

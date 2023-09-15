@@ -42,6 +42,7 @@ end
 
 function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::Vector{SVector{2,Float64}})
     fs_norms = norm.(fs)
+    sqrtspeeds = sqrt.(norm.(fv))
 
     thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
 
@@ -98,7 +99,7 @@ function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::V
 
         println()
 
-        plt = plot(thetas, fs_norms .+ scale * real.(w1), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), proj = :polar)
+        plt = plot(thetas, fs_norms .+ scale * (real.(w1) ./ sqrtspeeds), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), proj = :polar)
         #plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
         plot!(plt, thetas, fs_norms, color = :green)
         display(plt)
@@ -114,13 +115,11 @@ end
 function main()
     include("params/data_dir.jl")
     @show data_dir
-    filename::String = joinpath(data_dir, "Γ_full_$(matrix_dim)_$(temperature).csv")
 
-    if isfile(filename)
-        full_matrix::Matrix{Float64} = readdlm(filename, ',', Float64)
-        symmetrized_matrix = (full_matrix + full_matrix' )/ 2
+    if isfile(mat_filename)
+        full_matrix::Matrix{Float64} = readdlm(mat_filename, ',', Float64)
 
-        fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
+        fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(interpolation_dim).csv"), DataFrames.DataFrame)
         fs = SVector{2}.(fermi.kx, fermi.ky)
         fv = SVector{2}.(fermi.vx, fermi.vy)
 
@@ -128,8 +127,10 @@ function main()
         perimeter  = last(arclengths)
         pop!(arclengths)
 
-        # plt = plot(arclengths * 2pi / perimeter, 2e-6 .+ full_matrix[1, :], proj = :polar)
-        # display(plt)
+        # for i in 1:20:size(full_matrix)[2]
+        #     plt = plot(arclengths * 2pi / perimeter, 2e-6 .+ full_matrix[i, :], proj = :polar)
+        #     display(plt)
+        # end
         # return nothing
 
         lambdas = real.(reverse(eigvals(full_matrix))) * 5.25e3 # Rates in ps^-1

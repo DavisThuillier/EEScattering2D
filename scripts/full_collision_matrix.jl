@@ -6,6 +6,7 @@ using LinearAlgebra
 using DataFrames
 using CSV
 import StaticArrays: SVector
+using Interpolations
 
 function symmetry_metric(mat::Union{Matrix{Float64}, Matrix{ComplexF64}})
     sym_mat_norm = norm((mat + mat')/2)
@@ -15,20 +16,46 @@ function symmetry_metric(mat::Union{Matrix{Float64}, Matrix{ComplexF64}})
     return 0.5 * (symmetry + 1.0)
 end
 
+function matrix_interpolation(fs::Vector{SVector{2,Float64}}, mat::Matrix{Float64}, resized_dim::Int)
+    coords = FermiSurfaceMesh.get_arclengths(fs)
+    ds = mean(FermiSurfaceMesh.get_ds(fs))
+
+    interpolation_coords = collect(Base._linspace(coords[begin], coords[end], resized_dim + 1))
+    pop!(interpolation_coords)
+    interpolation_fs = Vector{SVector{2,Float64}}(undef, length(interpolation_coords))
+    for i in eachindex(interpolation_coords)
+        interpolation_fs[i] = FermiSurfaceMesh.get_momentum(fs, coords, interpolation_coords[i])
+    end
+    interpolation_ds = FermiSurfaceMesh.get_ds(interpolation_fs)
+
+    interpolation_matrix = Matrix{Float64}(undef, (resized_dim, resized_dim))
+
+    mat = hcat(mat, mat[:, 1])
+    mat = vcat(mat, mat[1, :]')
+    
+    nodes = (coords, coords)
+    itp = interpolate(nodes, mat, Gridded(Linear()))
+
+    
+    for i in eachindex(interpolation_coords)
+        interpolation_matrix[:, i] = sqrt.(interpolation_ds) .* itp.(interpolation_coords, interpolation_coords[i]) * sqrt(interpolation_ds[i]) / ds
+        interpolation_fs[i] = FermiSurfaceMesh.get_momentum(fs, coords, interpolation_coords[i])
+    end
+
+    return interpolation_matrix, interpolation_fs
+end
+
 function main()
     include("params/data_dir.jl")
 
     fs_filename::String  = joinpath(data_dir, "fermi_surface_$(matrix_dim).csv")
     fermi = CSV.read(fs_filename, DataFrames.DataFrame)
     fs = SVector{2}.(fermi.kx, fermi.ky)
-    ds = FermiSurfaceMesh.get_ds(fs)
-    fv = SVector{2}.(fermi.vx, fermi.vy)
+
 
     n_stem = joinpath(data_dir, "Γn_$(matrix_dim)_$(temperature)")
     u_stem = joinpath(data_dir, "Γu_$(matrix_dim)_$(temperature)")
     full_stem = joinpath(data_dir, "Γ_$(matrix_dim)_$(temperature)")
-
-    @show readdir(data_dir)
 
     n_files = String[]
     u_files = String[]
@@ -66,21 +93,33 @@ function main()
     u_matrix[1 + div(matrix_dim, 2) : matrix_dim, :] = circshift( u_matrix[1 : div(matrix_dim, 2), :], (0, div(matrix_dim, 2)))
 
     full_matrix = ( n_matrix + u_matrix) 
-    # full_matrix = n_matrix
 
-    @show symmetry_metric(n_matrix)
-    @show symmetry_metric(u_matrix)
+    interpolated_matrix, interpolation_fs = matrix_interpolation(fs, full_matrix, interpolation_dim)
+
+    interpolation_fv = Vector{SVector{2,Float64}}(undef, length(interpolation_fs))
+    FermiSurfaceMesh.fill_fermi_velocity!(interpolation_fv, interpolation_fs, hamiltonian)
+
     @show symmetry_metric(full_matrix)
+    @show symmetry_metric(interpolated_matrix)
 
     # full_matrix = (full_matrix' + full_matrix) / 2 # Symmetrizing matrix
-    for i in eachindex(full_matrix[:, 1])
-        full_matrix[i,i] -= sum(full_matrix[:, i]) #dot(full_matrix[i,:], sqrt.(ds ./ norm.(fv))) #/ sqrt(norm(fv[i]) * ds[i])
+    for i in eachindex(interpolated_matrix[:, 1])
+        interpolated_matrix[i,i] -= sum(interpolated_matrix[:, i])# - full_matrix[i,i]
     end
 
-    outfile = "Γ_full_$(matrix_dim)_$(temperature).csv"
+    outfile = "Γ_full_$(interpolation_dim)_$(temperature).csv"
     open(joinpath(data_dir, outfile), "w") do file
-        writedlm(file, full_matrix, ",")
+        writedlm(file, interpolated_matrix, ",")
+    end
+
+
+    interpolation_fs_file = joinpath(data_dir, "fermi_surface_$(interpolation_dim).csv")
+    open(interpolation_fs_file, "w") do file
+        println(file, "kx,ky,vx,vy")
+        writedlm(file, hcat(first.(interpolation_fs), last.(interpolation_fs), first.(interpolation_fv), last.(interpolation_fv)), ",")
     end
 end
+
+include(joinpath(@__DIR__, "params", "gamma.jl"))
 
 main()
