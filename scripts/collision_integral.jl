@@ -79,7 +79,7 @@ function main()
 
         gamma = Matrix{Float64}(undef, size(momenta)[2] + 2, 3)
         
-        FermiSurfaceIntegration.contracted_integral!(gamma, arclengths, perimeter, fs, momenta, hamiltonian, temperature, q_squared, umklapp = umklapp)
+        FermiSurfaceIntegration.angular_distribution!(gamma, arclengths, perimeter, fs, momenta, hamiltonian, temperature, q_squared, umklapp = umklapp)
 
         # All values need to be multiplied by 2pi/(hbar / e_F)
         gamma = sortslices(gamma, dims = 1)

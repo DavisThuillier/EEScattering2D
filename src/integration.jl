@@ -77,7 +77,7 @@ module FermiSurfaceIntegration
 
     "Compute Boltzmann collision integral between each point on FS and the injection point."
 
-    function contracted_integral!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, uniform_fs::Vector{SVector{2,Float64}}, momenta::Matrix{SVector{2, Float64}}, hamiltonian::Function, T::Float64, q_squared::Float64; umklapp = true)
+    function angular_distribution!(reduced_mat::Matrix{Float64}, arclengths::Vector{Float64}, perimeter::Float64, uniform_fs::Vector{SVector{2,Float64}}, momenta::Matrix{SVector{2, Float64}}, hamiltonian::Function, T::Float64, q_squared::Float64; umklapp = true)
         integral::SVector{2,Float64} = [0.0,0.0]
         s_num = size(momenta)[2]
         t_num = size(momenta)[1]
@@ -114,4 +114,27 @@ module FermiSurfaceIntegration
         reduced_mat[end, :] = [ 3*perimeter, 0.0, 0.0] # Will be sorted as the final element
         return nothing
     end
+
+    function contracted_integral(s1::Float64, s2::Float64, uniform_fs::Vector{SVector{2,Float64}}, s_num::Int, t_num::Int, hamiltonian::Function, T::Float64, q_squared::Float64; umklapp = true)
+        integral::SVector{2,Float64} = [0.0,0.0]
+
+        integration_mesh, mesh_dVs, mesh_variance, _ , loci_indices = FermiSurfaceMesh.discretize(uniform_fs, s_num, t_num, [s1, s2], hamiltonian, T)
+        energies = hamiltonian.(integration_mesh) 
+
+        for i in 2:(t_num-1)
+            k = integration_mesh[i, loci_indices[2]]
+            dk = norm(integration_mesh[i + 1, loci_indices[2]] - integration_mesh[i - 1, loci_indices[2]]) / 2
+            for j in 2:(t_num - 1)
+                p1 = integration_mesh[j, loci_indices[1]]
+                dp1 = norm(integration_mesh[j + 1, loci_indices[1]] - integration_mesh[j - 1, loci_indices[1]]) / 2
+                loss_terms = collision_integral(p1, k, integration_mesh, energies, mesh_dVs, hamiltonian, mesh_variance, T, q_squared; umklapp = umklapp) / ((2pi)^4 * T)
+
+                integral += loss_terms * dk * dp1
+            end                  
+        end
+
+        return integral
+    end
+
+
 end
