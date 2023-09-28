@@ -1,7 +1,7 @@
 using EEScattering2D
 
 using DelimitedFiles
-using Plots
+using CairoMakie
 using LinearAlgebra
 using DataFrames
 using CSV
@@ -100,7 +100,6 @@ function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::V
         println()
 
         plt = plot(thetas, fs_norms .+ scale * (real.(w1) ./ sqrtspeeds), title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), proj = :polar)
-        #plot!(plt, thetas, fs_norms .+ scale * real(w2), color = :black)
         plot!(plt, thetas, fs_norms, color = :green)
         display(plt)
         i += 1
@@ -119,7 +118,7 @@ function main()
     if isfile(mat_filename)
         full_matrix::Matrix{Float64} = readdlm(mat_filename, ',', Float64)
 
-        fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(interpolation_dim).csv"), DataFrames.DataFrame)
+        fermi = CSV.read(joinpath(data_dir,"fermi_surface_$(matrix_dim).csv"), DataFrames.DataFrame)
         fs = SVector{2}.(fermi.kx, fermi.ky)
         fv = SVector{2}.(fermi.vx, fermi.vy)
 
@@ -127,11 +126,14 @@ function main()
         perimeter  = last(arclengths)
         pop!(arclengths)
 
-        # for i in 1:20:size(full_matrix)[2]
-        #     plt = plot(arclengths * 2pi / perimeter, 2e-6 .+ full_matrix[i, :], proj = :polar)
-        #     display(plt)
-        # end
-        # return nothing
+        fig = Figure(fontsize=36, resolution = (1000, 1000))
+        ax = Axis(fig[1,1], xlabel = L"s_1", ylabel = L"s_2", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
+        hm = heatmap!(ax, arclengths, arclengths, full_matrix, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
+        Colorbar(fig[:,end+1], hm)
+        
+        display(fig)
+
+        return nothing
 
         lambdas = real.(reverse(eigvals(full_matrix))) * 5.25e3 # Rates in ps^-1
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2) # Order eigenvectors from smallest to largest
@@ -148,11 +150,7 @@ function main()
         println("Data file of full collision matrix does not exist.")
         return nothing
     end
-
-    # spectrum2 = plot(last.(odd_modes), -map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes", xlims = (0,50))
-    # plot!(spectrum2, last.(even_modes), -map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
-    # plot!(spectrum2, title = "T = $(round(temperature, digits = 4))", ylabel = L"- \lambda_m ", xlabel = "m")
-    # display(spectrum2)
+    
 end
 
 main()

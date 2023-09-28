@@ -4,7 +4,8 @@ import StaticArrays: SVector
 import LinearAlgebra: norm
 import Statistics: mean, median, max
 using LaTeXStrings
-using GeometryBasics
+using ProgressBars
+
 using DelaunayTriangulation, CairoMakie
 
 
@@ -13,86 +14,59 @@ fd(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 function main()
     band == "free" ? (hasBZ = false) : (hasBZ = true)
     Tf = 6326.35178 # K
-    temperatures = collect(8:4:20) / Tf
+    # temperature = collect(8:4:20) / Tf
+    temperature = 12 / Tf
 
     fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim, bz = hasBZ)
     arclengths = FermiSurfaceMesh.get_arclengths(fs)
     perimeter = last(arclengths)
 
-    num_bins = 192
-    perp_num = 13
+    num_bins = 120
+    perp_num = 5
 
     fv = Vector{SVector{2, Float64}}(undef, length(fs))
     FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
 
     grid_vals = Base._linspace(-0.5, 0.5, 200)
-    grid = collect(Iterators.product(grid_vals, grid_vals))
+    grid = map(x -> SVector{2}(x[1], x[2]), collect(Iterators.product(grid_vals, grid_vals)) )
+    energies = hamiltonian.(grid)
 
-    # rect = Rectangle(Point(-0.5, -0.5), Point(0.5, 0.5))
+    amp_ratio = 8.0
 
-    for temperature in temperatures
-        @show temperature
-        loci = [0.0, 0.1] * perimeter
-        @time momenta, dVs, variance, arclengths, loci_indices = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, loci, hamiltonian, temperature, prec; bz = hasBZ)
-        @show length(arclengths)
+    sym_num = 2*div(num_bins,4) + 1 # Enforce that sym_num is odd 
 
-        size(unique(momenta)) != size(vec(momenta)) && println("Nonunique!")
+    asym_mesh = FermiSurfaceMesh.com_gaussian_mesh(-perimeter/2, perimeter/2, num_bins, FermiSurfaceMesh.collinear_width(temperature, perimeter), amp_ratio) / sqrt(2)
+    sym_mesh = collect(LinRange(3 * perimeter / 4,perimeter, sym_num)) * sqrt(2) # Uniform
 
-        t_num = size(momenta)[1]  
-        s_num = size(momenta)[2]   
+    asym_num = length(asym_mesh)
+    
+    s1::Float64 = 0.0
+    s2::Float64 = 0.0
+    for (j, ξ1) in ProgressBar(enumerate(sym_mesh))
+        for (i, ξ2) in enumerate(asym_mesh)
+            s1 = mod((ξ1 + ξ2) / sqrt(2), perimeter)
+            s2 = mod((ξ1 - ξ2) / sqrt(2), perimeter)
+            
+            momenta, _, _, arclengths, loci_indices = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, [s1, s2], hamiltonian, temperature)
+            # @show ([s1, s2] - arclengths[loci_indices], perimeter) / perimeter
+            println(([s1, s2] - mod.(arclengths[loci_indices], perimeter)) / perimeter)
 
-        fig = Figure(fontsize=24)
-        pts = vec(momenta)
-        
-        # inner_boundary = map(x -> (x[1], x[2]), momenta[begin, :])
-        # push!(inner_boundary, inner_boundary[begin])
-        # outer_boundary = reverse(map(x -> (x[1], x[2]), momenta[end, :]))
-        # push!(outer_boundary, outer_boundary[begin])
+            fig = Figure(fontsize=36, resolution = (1000, 1000))
+            pts = vec(momenta)
+            tri = triangulate(pts)
+            vorn = voronoi(tri)
 
-        # nodes, pts = convert_boundary_points_to_indices([[outer_boundary]]; existing_points = pts)
-        # cons_tri = triangulate(pts; boundary_nodes = nodes, check_arguments = false)
-        tri = triangulate(pts)
-        vorn = voronoi(tri)
-        gens = Vector{SVector{2, Float64}}(undef, length(pts))
-        for i in eachindex(gens)
-            x = DelaunayTriangulation.get_generator(vorn, i)
-            gens[i] = SVector{2}(x[1], x[2])
+            ax = Axis(fig[1,1], title="Full Voronoi Tessellation", xlabel = L"k_x \,(2\pi/a_x)", ylabel = L"k_y \,(2\pi/a_y)")
+            heatmap!(ax, grid_vals, grid_vals, energies)
+            xlims!(ax, -0.5, 0.5)
+            ylims!(ax, -0.5, 0.5)
+            voronoiplot!(ax, vorn, show_generators=true, markercolor=:green, markersize = 4, linewidth = 0.2)
+            
+
+            resize_to_layout!(fig)
+            display(fig)
+            
         end
-        @show gens == pts
-        # reduced_vorn = VoronoiTessellation(tri, )
-        # areas = get_area.((vorn,), 1:length(pts))
-        # dVs = reshape(areas, size(momenta))
-        # for i in 1:size(dVs)[2]
-        #     dVs[begin, i] = 0.0
-        #     dVs[end, i]   = 0.0
-        # end
-
-        # @show dVs[begin, :]
-        ax = Axis(fig[1, 1], title="Clipped Voronoi tessellation", titlealign=:left, width=1000, height=1000)
-        voronoiplot!(ax, vorn, show_generators=true, color=:white, markersize = 4, markercolor = :green)
-
-        resize_to_layout!(fig)
-        display(fig)
-
-
-        # points = map(x -> Point(x[1], x[2]), vec(momenta'))
-        # tess = voronoicells(points, rect)
-        # areas = voronoiarea(tess)
-        # areas = reshape(areas, size(momenta))
-        # fill!(areas[begin, :], 0.0)
-        # fill!(areas[end, :], 0.0)
-
-        # modulus = size(momenta)[2]
-        # reduced_cells = tess.Cells[modulus+1:end-modulus]
-        # reduced_points = points[modulus+1:end-modulus]
-        
-        # reduced_tess = Tessellation(reduced_points, rect, reduced_cells)
-
-        # plt = plot(first.(momenta), last.(momenta), aspectratio = 1.0, seriestype = :scatter, markershape= :cross, markersize = 0.2, color = :black, legend = false, xlims = (-0.55, 0.55), ylims = (-0.55, 0.55))
-        # plot!(plt, xlabel = L"k_x a_x / 2\pi", ylabel = L"k_y a_y / 2\pi", title = "T = $(temperature)")
-        # # plot!(plt, reduced_tess, color=:green, linewidth = 0.1)
-        # display(plt) 
-        
     end
 end
 

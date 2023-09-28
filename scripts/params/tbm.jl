@@ -1,4 +1,5 @@
 ### Example Band ###
+# Near diamond FS 
 
 const mu::Float64 = 1.0
 const tx::Float64 = 1.0

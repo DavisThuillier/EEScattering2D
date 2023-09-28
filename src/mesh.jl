@@ -9,20 +9,28 @@ module FermiSurfaceMesh
 
     using DelaunayTriangulation
 
-    ## Collinear width parameters ##
-    # const max_width::Float64 = 0.4 # Maximum width of collinear region in radians
-    # const min_width::Float64 = 0.2 
-    # const width_slope::Float64 = 1.0 # Initial slope of exponential plateau function
-    #####################
-    
-    # collinear_width(T::Float64) = max_width * (1 - (1 - min_width/max_width) * exp( - (T - 0.0025) * width_slope))
+    #FIXME: Generalize to arbitrary FS. The values are based off the peak widths for the γ band of Sr2RuO4 for a high resolution run. 
     const zero_temp_width = 1.84112 / 600
     const peak_slope      = 47.2989 / 600
+
+    """
+        collinear_width(T, perimeter)
+    
+    Return a width parameter for the Gaussian meshes. If the width is taken to be σ√2 for the Gaussian mesh, the mesh width will be four times as wide as the peaks in the collision operator.
+    """
     function collinear_width(T::Float64, perimeter::Float64)
         fwhm = zero_temp_width + peak_slope * T
         return 4.0 * fwhm / (2 * sqrt(log(2))) * perimeter
     end
 
+    """
+        get_energy_root(startpoint, endpoint, hamiltonian, tolerance, max_iterations, level)
+
+    Compute a root of `hamiltonian` on the domain [`startpoint`, `endpoint`] using the bisection method. 
+
+    Nota Bene: It is assumed there exists one and only one root on the domain.
+    
+    """
     function get_energy_root(startpoint::SVector{2, Float64}, endpoint::SVector{2, Float64}, hamiltonian::Function; tolerance::Float64 = 0.0001, max_iterations::Int = 10000, level::Float64 = 0.0)
         delta_E::Float64 = 0.0
 
@@ -46,6 +54,11 @@ module FermiSurfaceMesh
         return (startpoint + endpoint) / 2
     end
 
+    """
+        generate_fermi_surface(hamiltonian, num_points, bz = true)
+
+    Generate a uniform discretized Fermi surface with `num_points` points for the given `hamiltonian`.
+    """
     function generate_fermi_surface(hamiltonian::Function, num_points::Int; bz::Bool = true)
         angles = collect(range(0.0, 2*pi, num_points * 10))
         pop!(angles)
@@ -66,7 +79,18 @@ module FermiSurfaceMesh
         return uniform_fermi_surface
     end
 
+    """
+        fill_fermi_surface!(fermi_surface, angles, hamiltonian, bz = true)
+
+    Populate the array `fermi_surface` with the roots of `hamiltonian` for each angle in `angles`. `fermi_surface` and `angles` must have the same length.
+
+    """
     function fill_fermi_surface!(fermi_surface::Vector{SVector{2, Float64}}, angles::Vector{Float64}, hamiltonian::Function; bz = true)
+        if length(fermi_surface) != length(angles)
+            println("Lengths of Fermi surface array and angular array do not match.")
+            return nothing
+        end
+
         startpoint::SVector{2, Float64} = [0.0, 0.0]
         center_energy = hamiltonian(startpoint)
 
@@ -94,6 +118,12 @@ module FermiSurfaceMesh
         return nothing
     end
 
+    """
+        gradient(f,k)
+
+    Compute the gradient of `f` at `k` where f is a scalar function of two variables.
+    This gradient is naive; i.e. it chooses a symmetric window about k at machine precision for secant line approximation.
+    """
     function gradient(f::Function, k::SVector{2,Float64})
         dp::Float64 = sqrt(eps(Float64))
         df_x = f(k + SVector{2}([dp,0])) - f(k + SVector{2}([-dp, 0]))
@@ -175,12 +205,35 @@ module FermiSurfaceMesh
         end
     end
 
+    """
+        cdf()
+    """
     cdf(x::Float64, x0::Float64, locus::Float64, width::Float64, ratio::Float64) = ((x - x0) / (width * sqrt(pi) * (ratio - 1)) + 0.5 * ( erf((x - locus) / width) - erf((x0 - locus) / width)) )
 
+    """
+        com_gaussian_mesh(a, b, N, amplitude_ratio, width)
+
+    Generates a non-uniform mesh on the one-dimensional interval with endpoints `a`, `b`.
+
+    If `a` > `b`, the values are swapped to enforce a positive interval orientation [`a`,`b`].
+    The mesh consists of three regions with density
+    ``
+    dn/dx = n_0 + A e^(-(x - x0)^2/l^2)
+    ``
+    where ``x0 = a`` for ``x ∈ [a,(3a + b)/4)``, ``x0 = (a + b)/2`` for ``x ∈ [(3a + b)/4, (a + 3b)/4]``, and ``x0 = b`` for ``x ∈ ((a + 3b)/4, b].``
+    # Arguments
+    - `a::Real`: one endpoint of the mesh domain
+    - `b::Real`: the other endpoint of the mesh domain
+    - `N::Int` : The number of points in the mesh (output is N±2 points)
+    - `amplitude_ratio`: The ratio of point density dn/dx at the central peak to the density at x → ∞
+    - `width::Real` : ``σ√2`` where ``σ^2`` is the variance of the Gaussian in the density function
+    """
     function com_gaussian_mesh(a::Real, b::Real, N::Int, width::Real, amplitude_ratio::Real)
         b < a && ((a, b) = (b, a))
+
+        iseven(N) && (N += 1)
     
-        amp = (N/ 4.0 - 1) / cdf((b - a) / 4.0, 0.0, 0.0, width, amplitude_ratio)
+        amp = (N/ 4.0 - 2) / cdf((b - a) / 4.0, 0.0, 0.0, width, amplitude_ratio)
         
         mesh = [a]
         domain = LinRange(0.0, (b - a) / 4.0, 100 * Int(N * amplitude_ratio))
@@ -199,31 +252,29 @@ module FermiSurfaceMesh
         return vcat(mesh, reverse((a + b) .- mesh)[2:end])
     end
 
+    """
+    
+    Generate a 1D mesh of the Fermi surface with Gaussian density at an arbitrary number of points.
+
+    Only half of the Fermi surface is generated, and the rest can be restored through inversion symmetry.
+
+    """
     function half_gaussian_fs(fermi_surface::Vector{SVector{2, Float64}}, loci::Vector{Float64}, num_angles::Int, width::Float64, ratio::Float64)
         arclengths = get_arclengths(fermi_surface)
         perimeter = arclengths[end]
 
         loci::Vector{Float64} = mod.(vcat(loci, loci .+ perimeter/2), perimeter)
         sort!(loci)
-        # loci = loci[1:div(length(loci),2)] # Reduce back to half of the perimeter
+        loci = loci[1:length(loci)÷2 + 1] # Reduce to half of the perimeter
         
-        walls = Vector{Float64}(undef, length(loci)) # Midpoints between loci
-        for i in eachindex(loci)
-            i == length(loci) && continue
-            walls[i] = mod((loci[i + 1] + loci[i]) / 2, perimeter)
-            loci[i + 1] > loci[i] && (walls[end] += perimeter / 2)
-        end
-        walls[end] = (loci[1] + perimeter + loci[end]) / 2
-        
-        regions = Vector{Tuple{Float64, Float64}}(undef, 2*length(loci))
+        regions = Vector{Tuple{Float64, Float64}}(undef, 2*(length(loci) - 1))
         for i in eachindex(regions)
             if isodd(i)
-                regions[i] = (loci[div(i, 2) + 1], walls[div(i, 2) + 1])
+                regions[i] = (loci[i÷2 + 1], (loci[i÷2 + 1] + loci[i÷2 + 2] ) / 2.0)
             else
-                regions[i] = (walls[div(i,2)], loci[mod(div(i, 2), length(loci)) + 1])
+                regions[i] = ((loci[i÷2] + loci[i÷2 + 1] ) / 2.0, loci[i÷2 + 1])
             end
         end
-        regions[end] = (regions[end][1], regions[end][2] + perimeter)
 
         s_points = Vector{Float64}(undef, 0)
         A = (0.5 * num_angles/length(loci)) / cdf(0.5 * perimeter / length(loci), 0.0, 0.0, width, ratio)
@@ -234,13 +285,8 @@ module FermiSurfaceMesh
             isapprox(regions[i][2], regions[i][1], atol=1e-8) && continue # Skip region if loci overlap
             isodd(i) && push!(loci_indices, lastindex(s_points) + 1)
 
-            if i != length(regions)
-                locus = loci[div(i,2) + 1]
-                push!(s_points, regions[i][1]) # Enforce that loci and walls are in the mesh
-            else
-                locus = regions[i][2]
-                push!(s_points, locus)
-            end
+            locus = loci[div(i,2) + 1]
+            push!(s_points, regions[i][1])
             s_points[end] - s_points[1] >= perimeter / 2 && break
             # Forces the half-mesh condition
 
@@ -265,7 +311,6 @@ module FermiSurfaceMesh
             end
         end
         sort!(s_points)
-        pop!(s_points)
         
         mesh = Vector{SVector{2,Float64}}(undef, length(s_points))
         for i in eachindex(mesh)
@@ -275,6 +320,13 @@ module FermiSurfaceMesh
         return mesh, s_points
     end
 
+    """
+        get_k_bound(hamiltonian, e_bound, fs_k, velocity; max_iterations = 10000, tolerance = 0.0001, bz = true)
+
+    Compute the root of `hamiltonian` - `e_bound` along the direction of `velocity` away from the point `fs_k` on the Fermi surface.
+
+    To truncate when hitting the Brillouin Zone, set bz = true.
+    """
     function get_k_bound(hamiltonian::Function, e_bound::Float64, fs_k::SVector{2, Float64}, velocity::SVector{2,Float64}; max_iterations = 10000, tolerance = 0.0001, bz::Bool = true)
         e_bound  == 0.0 && return fs_k
 
@@ -330,10 +382,26 @@ module FermiSurfaceMesh
         return k_bound
     end
 
+    """
+        fd(E, T)
+    
+    Return the value of the Fermi-Dirac distribution for energy E and temperature T.
+    """
     fd(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
-    function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, hamiltonian::Function, perp_num::Int, T::Float64, precision::Float64; bz::Bool = true)
+    """
+        temperature_broaden(fermi_surface, fermi_velocity, hamiltonian, perp_num, T, precision = 0.001; bz = true)
+
+    Generate a 2D mesh by extending a 1D mesh of the Fermi surface along the direction of the Fermi velocity at each point.
+
+    The thermally broadened points have a density profile ``dn/de = df/de`` where f is the Fermi-Dirac distribution.
+
+    The boundaries of the mesh are where f(ϵ) (1 - f(ϵ)) = `precision` and ϵ is given by `hamiltonian`.
+    """
+    function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, hamiltonian::Function, perp_num::Int, T::Float64, precision::Float64 = 0.001; bz::Bool = true)
         e_max::Float64 = 2  * T * acosh(1 / (2 * sqrt(precision)))
+
+        iseven(perp_num) && (perpnum += 1)
 
         momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
@@ -358,6 +426,16 @@ module FermiSurfaceMesh
         return momenta
     end
 
+    """
+        discretize(fermi_surface, num_bins, perp_num, loci, hamiltonian, T, precision = 0.001, ratio = 8.0; bz = true)
+
+    Generate a nonuniform 2D mesh of points by thermally broadening the Fermi surface.
+    The boundaries of the mesh are where f(ϵ) (1 - f(ϵ)) = `precision` and ϵ is given by `hamiltonian`.
+
+    Return the mesh, area elements in k-space for each mesh point, a variance parameter for Gaussian delta functions to be defined on the mesh, the arclength coordinates, s, corresponding to the columns of the mesh matrix, and the indices of the columns where the Gaussian peaks occur.
+    
+    # Arguments
+    """
     function discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, loci::Vector{Float64}, hamiltonian::Function, T::Float64, precision::Float64 = 0.001, ratio::Float64 = 8.0; bz::Bool = true)
         perimeter = get_perimeter(fermi_surface)
         width::Float64 = collinear_width(T, perimeter)# Really, σ sqrt(2) for the Gaussian density with a 5 σ minimal peak width
@@ -370,7 +448,7 @@ module FermiSurfaceMesh
         momenta = hcat(momenta, - momenta) # Enforce inversion symmetry
 
         arclengths = vcat(s_points, perimeter / 2 .+ s_points)
-        mod_arclengths = mod.(arclengths, perimeter)
+        # mod_arclengths = mod.(arclengths, perimeter)
 
         size(unique(momenta)) != size(vec(momenta)) && (println("Duplicate points generated in mesh."); return nothing)
 
@@ -400,41 +478,39 @@ module FermiSurfaceMesh
         loci_indices = Vector{Int}(undef, length(loci))
         loci = mod.(loci, perimeter)
         for i in eachindex(loci)
-            j1, j2 = minimum_binary_search(mod_arclengths, mod(loci[i], perimeter))
-            Δ1 = abs(mod(arclengths[j1] - loci[i], perimeter))
-            Δ2 = abs(mod(arclengths[j2] - loci[i], perimeter))
+            comp = loci[i] < arclengths[end] - perimeter ? loci[i] + perimeter : loci[i] # Value to compare is locus mapped into domain of arclengths
+            j1, j2 = minimum_binary_search(arclengths, comp)
+            # Δ1 = abs(mod(arclengths[j1] - comp, perimeter))
+            # Δ2 = abs(mod(arclengths[j2] - comp, perimeter))
+            Δ1 = abs(arclengths[j1] - comp)
+            Δ2 = abs(arclengths[j2] - comp)
             loci_indices[i] = Δ1 < Δ2 ? j1 : j2
-            # @show findmin(abs.(arclengths .- mod(loci[i], perimeter)))
-            # loci_indices[i] = mod(div(j1 + j2, 2) - 1, length(arclengths)) + 1
         end
 
         return momenta, dVs, variance, arclengths, loci_indices
     end
 
-    # discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, locus::Float64, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz = true) = discretize(fermi_surface, num_bins, perp_num, [locus], hamiltonian, T, precision; bz = bz)
     
-    # discretize(fermi_surface::Vector{SVector{2, Float64}}, num_bins::Int, perp_num::Int, injection_index::Int, hamiltonian::Function, T::Float64, precision::Float64 = 0.001; bz = true) = discretize(fermi_surface, num_bins, perp_num, [get_arclengths(fermi_surface)[injection_index]], hamiltonian, T, precision; bz = bz)
-
-    function endpoint_gaussian_mesh(a::Real, b::Real, N::Int, amplitude_ratio::Real, width::Real)
-        b < a && ((a, b) = (b, a))
+    # function endpoint_gaussian_mesh(a::Real, b::Real, N::Int, amplitude_ratio::Real, width::Real)
+    #     b < a && ((a, b) = (b, a))
     
-        amp = (N/ 4.0 - 1) / cdf((b - a) / 4.0, 0.0, 0.0, width, amplitude_ratio)
+    #     amp = (N/ 4.0 - 1) / cdf((b - a) / 4.0, 0.0, 0.0, width, amplitude_ratio)
         
-        mesh = [a]
-        domain = LinRange(0.0, (b - a) / 4.0, 100 * Int(N * amplitude_ratio))
+    #     mesh = [a]
+    #     domain = LinRange(0.0, (b - a) / 4.0, 100 * Int(N * amplitude_ratio))
 
-        integrated_n = cdf.(domain, first(domain), first(domain), amp, width, amplitude_ratio)
-        n::Int = 0
-        for j in eachindex(integrated_n)
-            j == 1 && continue
-            if integrated_n[j] > n
-                push!(mesh, a + domain[j] + (n - integrated_n[j - 1]) * (domain[j] - domain[j - 1]) / (integrated_n[j] - integrated_n[j - 1])) 
-                n += 1
-            end
-        end
-        mesh = vcat(mesh, [(3 * a + b) / 4.0], reverse((3*a + b)/2.0 .- mesh))
-        # return mesh
-        return vcat(mesh, reverse((a + b) .- mesh)[2:end])
-    end
+    #     integrated_n = cdf.(domain, first(domain), first(domain), amp, width, amplitude_ratio)
+    #     n::Int = 0
+    #     for j in eachindex(integrated_n)
+    #         j == 1 && continue
+    #         if integrated_n[j] > n
+    #             push!(mesh, a + domain[j] + (n - integrated_n[j - 1]) * (domain[j] - domain[j - 1]) / (integrated_n[j] - integrated_n[j - 1])) 
+    #             n += 1
+    #         end
+    #     end
+    #     mesh = vcat(mesh, [(3 * a + b) / 4.0], reverse((3*a + b)/2.0 .- mesh))
+    #     # return mesh
+    #     return vcat(mesh, reverse((a + b) .- mesh)[2:end])
+    # end
 
 end

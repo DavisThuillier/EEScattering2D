@@ -17,41 +17,42 @@ function input_handling()
     end
 end
 
-function create_files(temperature::Float64, start_index::Int, end_index::Int, num_bins::Int, perp_num::Int)
-    data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_band", "$(round(temperature, digits = 8))")
+function create_files(temperature::Float64, num_bins::Int, perp_num::Int)
+    data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_band", "$(round(temperature, digits = 8))", "$(num_bins)_$(perp_num)")
     data_dir = data_dir_stem
 
-    filenames = map( x -> "Γ" * x * "_$(row_dim)_$(round(temperature, digits = 8))_$(start_index)_to_$(end_index).csv", ["n","u"])
+    Γ_outfile = joinpath(data_dir, "Γ_full_$(row_dim)_$(round(temperature, digits = 8)).csv")
     
     # Check if any of the output files exist in the desired directory
     j = 0
-    while sum(isfile.(joinpath.(data_dir, filenames))) > 0
+    while sum(isfile.(joinpath.(data_dir, Γ_outfile))) > 0
         j += 1
         data_dir = data_dir_stem * "($(j))"
         !isdir(data_dir) && break
     end
     !isdir(data_dir) && mkpath(data_dir)
 
-    for i in eachindex(filenames)
-        filenames[i] = joinpath(data_dir, filenames[i])
-        open(filenames[i], "w") do f
-            println("### Resolution: 192x41")
-            # Clears file for writing
-        end
+    open(Γ_outfile, "w") do file
+        # Clear output file for writing 
     end
     
-    return data_dir, filenames
+    return data_dir, Γ_outfile
 end
 
-
 function main()
-    # data_dir, filenames = create_files(temperature, start_index, end_index, num_bins, perp_num)
+    data_dir, outfile = create_files(temperature, num_bins, perp_num)
 
-    fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim)
+    fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim) # Uniform Fermi Surface
     fv = Vector{SVector{2, Float64}}(undef, length(fs))
-    FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian)  
-    # ds = FermiSurfaceMesh.get_ds(fs)
-    perimeter = FermiSurfaceMesh.get_perimeter(fs)
+    FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian) 
+    ds = FermiSurfaceMesh.get_ds(fs) 
+    arclengths = FermiSurfaceMesh.get_arclengths(fs)
+    perimeter = last(arclengths)
+    pop!(arclengths) # Remove the final element so that arclengths can be used as the interpolation mesh
+
+    ############################
+    ## Thomas-Fermi Screening ##
+    ############################
 
     ef::Float64 = 0.55 # Fermi energy in eV
     e0::Float64 = 55.26349406e6 # Vacuum permittivity in e^2 / eV / m
@@ -59,59 +60,83 @@ function main()
 
     # Screened Parameters
     alpha = 1 / (ef * e0 * c) # Characteristic non-dimensionalized energy scale for interaction matrix element
-    ## prefactor = alpha^2 
     q_squared = alpha * get_dos(fs, fv) / (2pi)^2 # Thomas-Fermi screening wavevector squared 
+    prefactor = (2pi)^2 / get_dos(fs, fv) # For a constant interaction matrix element
 
-    # Constant matrix element
-    prefactor = (2pi)^2 / get_dos(fs, fv)
-
-    # open(joinpath(data_dir, "fermi_surface_$(length(fs)).csv"), "w") do file
-    #     println(file, "kx,ky,vx,vy")
-    #     writedlm(file, hcat(first.(fs), last.(fs), first.(fv), last.(fv)), ",")
-    # end
+    # Write referenced FS and corresponding Fermi velocity to file
+    open(joinpath(data_dir, "fermi_surface_$(length(fs)).csv"), "w") do file
+        println(file, "kx,ky,vx,vy")
+        writedlm(file, hcat(first.(fs), last.(fs), first.(fv), last.(fv)), ",")
+    end
     amp_ratio = 8.0
 
-    asym_num = 121
-    sym_num = 51
+    ###########################
+    ## Center-of-mass meshes ##
+    ###########################
 
-    Γ_ξ = Matrix{Float64}(undef, asym_num, sym_num) 
-
-    asym_mesh = FermiSurfaceMesh.com_gaussian_mesh(-perimeter/2, perimeter/2, asym_num, FermiSurfaceMesh.collinear_width(temperature, perimeter), amp_ratio) / sqrt(2)
-    
-    # original_coords = Vector{SVector{2,Float64}}(undef, sym_num * length(mesh))
-    # k = 1
-
-    sym_mesh = LinRange(0.0,perimeter*sqrt(2), sym_num) # Uniform
+    sym_num = 2*div(num_bins,4) + 1 # Enforce that sym_num is odd 
+    asym_mesh = FermiSurfaceMesh.com_gaussian_mesh(-perimeter/2, perimeter/2, num_bins, FermiSurfaceMesh.collinear_width(temperature, perimeter), amp_ratio) / sqrt(2) # Mesh for ξ2 ≡ (s1 - s2) / √2
+    sym_mesh = collect(LinRange(0.0,perimeter*sqrt(2), sym_num))  # Mesh for ξ1 ≡ (s1 + s2) / √2
+    asym_num = length(asym_mesh)
     
     s1::Float64 = 0.0
     s2::Float64 = 0.0
+    Γ_ξ = Matrix{Float64}(undef, asym_num, sym_num) 
     for (j, ξ1) in ProgressBar(enumerate(sym_mesh))
-        # plot!(plt, mesh, ξ1 * ones(length(mesh)), seriestype = :scatter, markersize = 0.5, color = :black)
         for (i, ξ2) in enumerate(asym_mesh)
             s1 = mod((ξ1 + ξ2) / sqrt(2), perimeter)
             s2 = mod((ξ1 - ξ2) / sqrt(2), perimeter)
-            # @show [s1, s2] / perimeter
-            # momenta, _, _, _, _ = FermiSurfaceMesh.discretize(fs, num_bins, perp_num, [s1, s2], hamiltonian, temperature)
-            # @show arclengths[loci_indices] / perimeter
+            
+            Γ_ξ[i,j] = prefactor * sum(FermiSurfaceIntegration.contracted_integral(s1, s2, fs, num_bins, perp_num, hamiltonian, temperature, q_squared)) # Sums the normal and umklapp contributions
+        end
+    end
+    ###################
+    ## Interpolation ##
+    ###################
+    itp = interpolate((asym_mesh, sym_mesh), Γ_ξ, Gridded(Linear()))
 
-            # fig = Figure(fontsize=36, resolution = (1000, 1000))
-            # pts = vec(momenta)
-            # tri = triangulate(pts)
-            # vorn = voronoi(tri)
+    # Uniform square mesh for ξ1, ξ2
+    # Twice as many points are used for ξ1, since the domain of ξ1
+    # is twice as large as the domain of ξ2
+    ξ2_mesh = LinRange(-perimeter/2,perimeter/2,row_dim) / sqrt(2)
+    ξ1_mesh = LinRange(0.0,perimeter,2*row_dim) * sqrt(2)
 
-            # ax = Axis(fig[1,1], title="Full Voronoi Tessellation", xlabel = L"k_x \,(2\pi/a_x)", ylabel = L"k_y \,(2\pi/a_y)")
-            # xlims!(ax, -0.5, 0.5)
-            # ylims!(ax, -0.5, 0.5)
-            # voronoiplot!(ax, vorn, show_generators=true, markercolor=:green, markersize = 4, linewidth = 0.2)
+    # Collision matrix in (s1,s2) coordinates
+    # s1 ↦ row 
+    # s2 ↦ column
+    Γ_s = Matrix{Float64}(undef, row_dim, row_dim)
+    s_mesh = LinRange(0.0, perimeter, row_dim)
 
-            # resize_to_layout!(fig)
-            # display(fig)
+    for ξ1 in ξ1_mesh
+        for ξ2 in ξ2_mesh
+            s1 = mod((ξ1 + ξ2) / sqrt(2), perimeter)
+            s2 = mod((ξ1 - ξ2) / sqrt(2), perimeter)
 
-            Γ_ξ = prefactor * sum(FermiSurfaceIntegration.contracted_integral(s1, s2, fs, num_bins, perp_num, hamiltonian, temperature, q_squared))
+            _, k1 = findmin(abs.(mod.(s1 .- s_mesh,perimeter)))
+            _, k2 = findmin(abs.(mod.(s2 .- s_mesh,perimeter)))
+            Γ_s[k1, k2] = itp.(ξ2, ξ1)
         end
     end
 
-    heatmap(asym_mesh, sym_domain, Γ_ξ)
+    ##################
+    ## Symmetrizing ##
+    ##################
+
+    sym_factor = sqrt.(norm.(fv) .* ds)
+
+    @show size(Γ_s)
+    
+    open(outfile, "w") do file
+        writedlm(file, Γ_s, ",")
+    end
+
+
+    # Γ_s = prefactor * (sym_factor' .* Γ_s * sym_factor)
+
+    # 
+    # open(outfile, "w") do file
+    #     writedlm(file, Γ_s, ",")
+    # end
 
 end
 
@@ -126,7 +151,7 @@ include(joinpath(@__DIR__, "params", "$(band).jl"))
 # const num_bins    = parse(Int,     ARGS[2])
 # const perp_num    = parse(Int,     ARGS[3])
 const temperature = 0.001581
-const num_bins    = 120
-const perp_num    = 17
+const num_bins    = 50
+const perp_num    = 13
 
 main()
