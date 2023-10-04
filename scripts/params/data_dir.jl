@@ -1,5 +1,5 @@
 const band::String = "gamma"
-const resolution::String = "75_17"
+const resolution::String = "75_25"
 const matrix_dim::Int = 1200
 const temperature::Float64 = 0.001581
 

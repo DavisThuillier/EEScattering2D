@@ -6,13 +6,14 @@ using Interpolations
 using DelimitedFiles
 using ProgressBars
 
-using DelaunayTriangulation, CairoMakie 
-using LaTeXStrings
+# using DelaunayTriangulation
+# using CairoMakie 
+# using LaTeXStrings
 
 function input_handling()
-    if length(ARGS) != 3
+    if length(ARGS) != 4
         println("Insufficient number of arguments.")
-        println("Format: com_collision_matrix.jl [T::F64] [n_s::Int] [n_t::Int]")
+        println("Format: com_collision_matrix.jl [T::F64] [n_s::Int] [n_t::Int] [dim::Int]")
         exit()
     end
 end
@@ -98,12 +99,12 @@ function main()
         end
     end
 
-    fig = Figure(fontsize=36, resolution = (1000, 1000))
-    ax = Axis(fig[1,1], xlabel = L"ξ_2", ylabel = L"ξ_1", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
-    hm = heatmap!(ax, Γ_ξ, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
-    Colorbar(fig[:,end+1], hm)
+    # fig = Figure(fontsize=36, resolution = (1000, 1000))
+    # ax = Axis(fig[1,1], xlabel = L"ξ_2", ylabel = L"ξ_1", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
+    # hm = heatmap!(ax, Γ_ξ, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
+    # Colorbar(fig[:,end+1], hm)
     
-    display(fig)
+    # display(fig)
 
     open(outfiles[1], "w") do file
         writedlm(file, Γ_ξ, ",")
@@ -135,12 +136,12 @@ function main()
         Γ_s[i,i] -= dot(Γ_s[i, :], restoration_factor) / restoration_factor[i]
     end
 
-    fig = Figure(fontsize=36, resolution = (1000, 1000))
-    ax = Axis(fig[1,1], xlabel = L"s_1", ylabel = L"s_2", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
-    hm = heatmap!(ax, Γ_s, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
-    Colorbar(fig[:,end+1], hm)
+    # fig = Figure(fontsize=36, resolution = (1000, 1000))
+    # ax = Axis(fig[1,1], xlabel = L"s_1", ylabel = L"s_2", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
+    # hm = heatmap!(ax, Γ_s, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
+    # Colorbar(fig[:,end+1], hm)
     
-    display(fig)
+    # display(fig)
 
     ##################
     ## Symmetrizing ##
@@ -163,16 +164,11 @@ end
 include("params/params.jl")
 include(joinpath(@__DIR__, "params", "$(band).jl"))
 
-# input_handling()
+input_handling()
 
-# const temperature = parse(Float64, ARGS[1])
-# # const start_index = parse(Int,     ARGS[2])
-# # const end_index   = parse(Int,     ARGS[3])
-# const num_bins    = parse(Int,     ARGS[2])
-# const perp_num    = parse(Int,     ARGS[3])
-const temperature::Float64 = 0.001581
-const num_bins::Int        = 75
-const perp_num::Int        = 17
-const row_dim::Int         = 1200
+const temperature = parse(Float64, ARGS[1])
+const num_bins    = parse(Int,     ARGS[2])
+const perp_num    = parse(Int,     ARGS[3])
+const row_dim     = parse(Int,     ARGS[4])
 
 main()
