@@ -1,7 +1,7 @@
 using EEScattering2D
 
 import StaticArrays: SVector
-import LinearAlgebra: norm
+import LinearAlgebra: norm, dot
 using Interpolations
 using DelimitedFiles
 using ProgressBars
@@ -21,28 +21,35 @@ function create_files(temperature::Float64, num_bins::Int, perp_num::Int)
     data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_band", "$(round(temperature, digits = 8))", "$(num_bins)_$(perp_num)")
     data_dir = data_dir_stem
 
-    Γ_outfile = joinpath(data_dir, "Γ_full_$(row_dim)_$(round(temperature, digits = 8)).csv")
-    
+    filenames = map(x -> "Γ_$(x)_$(row_dim)_$(round(temperature, digits = 8)).csv", ["ξ", "s"]) 
+
     # Check if any of the output files exist in the desired directory
     j = 0
-    while sum(isfile.(joinpath.(data_dir, Γ_outfile))) > 0
+    while sum(isfile.(joinpath.(data_dir, filenames))) > 0
         j += 1
         data_dir = data_dir_stem * "($(j))"
         !isdir(data_dir) && break
     end
     !isdir(data_dir) && mkpath(data_dir)
 
-    open(Γ_outfile, "w") do file
-        # Clear output file for writing 
+    for i in eachindex(filenames)
+        filenames[i] = joinpath(data_dir, filenames[i])
+        open(filenames[i], "w") do file
+            # Clear output file for writing 
+        end
     end
     
-    return data_dir, Γ_outfile
+    
+    return data_dir, filenames
 end
 
 function main()
-    data_dir, outfile = create_files(temperature, num_bins, perp_num)
+    data_dir, outfiles = create_files(temperature, num_bins, perp_num)
 
-    fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim) # Uniform Fermi Surface
+    # Enforce that the dimension of the matrix is divisible by 4
+    dim = 4 * (row_dim ÷ 4)
+
+    fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, dim) # Uniform Fermi Surface
     fv = Vector{SVector{2, Float64}}(undef, length(fs))
     FermiSurfaceMesh.fill_fermi_velocity!(fv, fs, hamiltonian) 
     ds = FermiSurfaceMesh.get_ds(fs) 
@@ -90,53 +97,66 @@ function main()
             Γ_ξ[i,j] = prefactor * sum(FermiSurfaceIntegration.contracted_integral(s1, s2, fs, num_bins, perp_num, hamiltonian, temperature, q_squared)) # Sums the normal and umklapp contributions
         end
     end
+
+    fig = Figure(fontsize=36, resolution = (1000, 1000))
+    ax = Axis(fig[1,1], xlabel = L"ξ_2", ylabel = L"ξ_1", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
+    hm = heatmap!(ax, Γ_ξ, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
+    Colorbar(fig[:,end+1], hm)
+    
+    display(fig)
+
+    open(outfiles[1], "w") do file
+        writedlm(file, Γ_ξ, ",")
+    end
+
     ###################
     ## Interpolation ##
     ###################
     itp = interpolate((asym_mesh, sym_mesh), Γ_ξ, Gridded(Linear()))
-
-    # Uniform square mesh for ξ1, ξ2
-    # Twice as many points are used for ξ1, since the domain of ξ1
-    # is twice as large as the domain of ξ2
-    ξ2_mesh = LinRange(-perimeter/2,perimeter/2,row_dim) / sqrt(2)
-    ξ1_mesh = LinRange(0.0,perimeter,2*row_dim) * sqrt(2)
+    etp = extrapolate(itp, Flat())
 
     # Collision matrix in (s1,s2) coordinates
     # s1 ↦ row 
     # s2 ↦ column
     Γ_s = Matrix{Float64}(undef, row_dim, row_dim)
-    s_mesh = LinRange(0.0, perimeter, row_dim)
+    sym_factor = sqrt.(norm.(fv) .* ds)
+    restoration_factor = sqrt.(ds ./ norm.(fv))
 
-    for ξ1 in ξ1_mesh
-        for ξ2 in ξ2_mesh
-            s1 = mod((ξ1 + ξ2) / sqrt(2), perimeter)
-            s2 = mod((ξ1 - ξ2) / sqrt(2), perimeter)
+    for (i,s1) in enumerate(arclengths)
+        for (j,s2) in enumerate(arclengths)
+            ξ1 = (s1 + s2) / sqrt(2)
+            ξ2 = (s1 - s2) / sqrt(2)
 
-            _, k1 = findmin(abs.(mod.(s1 .- s_mesh,perimeter)))
-            _, k2 = findmin(abs.(mod.(s2 .- s_mesh,perimeter)))
-            Γ_s[k1, k2] = itp.(ξ2, ξ1)
+            ξ2 = mod(ξ2 + perimeter * sqrt(2) / 4, perimeter * sqrt(2) / 2) - perimeter * sqrt(2) / 4
+            ξ1 = mod(ξ1, perimeter * sqrt(2))
+
+            Γ_s[i,j] = sym_factor[i] * sym_factor[j] * etp.(ξ2, ξ1)
         end
+        Γ_s[i,i] -= dot(Γ_s[i, :], restoration_factor) / restoration_factor[i]
     end
+
+    fig = Figure(fontsize=36, resolution = (1000, 1000))
+    ax = Axis(fig[1,1], xlabel = L"s_1", ylabel = L"s_2", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
+    hm = heatmap!(ax, Γ_s, colormap = Reverse(:davos), colorrange = (-0.002,0.001))
+    Colorbar(fig[:,end+1], hm)
+    
+    display(fig)
 
     ##################
     ## Symmetrizing ##
     ##################
 
-    sym_factor = sqrt.(norm.(fv) .* ds)
+    # for i in 1:row_dim
+    #     for j in 1:row_dim
+    #         Γ_s[i,j] = sym_factor[i] * sym_factor[j] * Γ_s[i,j]
+    #     end
+    #     Γ_s[i,i] = dot(Γ_s[:, i], sqrt.(ds ./ norm.(fv))) * sqrt(norm(fv[i]) / ds[i]) # Enforcing particle conservation
+    # end
 
-    @show size(Γ_s)
     
-    open(outfile, "w") do file
+    open(outfiles[2], "w") do file
         writedlm(file, Γ_s, ",")
     end
-
-
-    # Γ_s = prefactor * (sym_factor' .* Γ_s * sym_factor)
-
-    # 
-    # open(outfile, "w") do file
-    #     writedlm(file, Γ_s, ",")
-    # end
 
 end
 
@@ -150,8 +170,9 @@ include(joinpath(@__DIR__, "params", "$(band).jl"))
 # # const end_index   = parse(Int,     ARGS[3])
 # const num_bins    = parse(Int,     ARGS[2])
 # const perp_num    = parse(Int,     ARGS[3])
-const temperature = 0.001581
-const num_bins    = 50
-const perp_num    = 13
+const temperature::Float64 = 0.001581
+const num_bins::Int        = 75
+const perp_num::Int        = 17
+const row_dim::Int         = 1200
 
 main()

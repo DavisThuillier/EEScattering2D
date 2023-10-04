@@ -6,7 +6,6 @@ module EEScattering2D
 
     import StaticArrays: SVector
     import LinearAlgebra: norm
-    using DelimitedFiles
 
     include("mesh.jl")
     import .FermiSurfaceMesh

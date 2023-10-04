@@ -7,8 +7,12 @@ module FermiSurfaceIntegration
 
     import ..EEScattering2D: FermiSurfaceMesh
 
+    
     fd(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
+    """
+        gaussian_delta(deviation, width)
+    """
     gaussian_delta(deviation::Float64, width::Float64) = exp( - deviation^2 / width) / sqrt(width * pi)
 
     function gradient(f::Function, k::SVector{2,Float64})

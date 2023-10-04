@@ -1,20 +1,18 @@
 using EEScattering2D
 
 using DelimitedFiles
-using Plots
 using LinearAlgebra
 using DataFrames
 using CSV
-using LaTeXStrings
 import StaticArrays: SVector
 using Statistics
 
 
 function main()
-    fs_filename::String  = joinpath(data_dir, "fermi_surface_$(interpolation_dim).csv")
+    fs_filename::String  = joinpath(data_dir, "fermi_surface_$(matrix_dim).csv")
 
-    if isfile(mat_filename)
-        full_matrix::Matrix{Float64} = readdlm(mat_filename, ',', Float64)
+    if isfile(s_matrix_file)
+        full_matrix::Matrix{Float64} = readdlm(s_matrix_file, ',', Float64)
         fermi = CSV.read(fs_filename, DataFrames.DataFrame)
         
         fs = SVector{2}.(fermi.kx, fermi.ky)
@@ -47,11 +45,6 @@ function main()
         inverse_times = diagm(1 ./ lambdas)
         inverse_times[1,1] = 0.0
         # @show findmax(abs.(vx))
-  
-        # σ[1,1] = real.(inner_product(vx, fs, hamiltonian, temperature))
-        # σ[1,2] = real.(inner_product(vx, inverse_times * vy, fs, hamiltonian, temperature))
-        # σ[2,1] = real.(inner_product(vy, inverse_times * vx, fs, hamiltonian, temperature))
-        # σ[2,2] = real.(inner_product(vy, inverse_times * vy, fs, hamiltonian, temperature))
 
         σ[1,1] = real(dot(vx, inverse_times * vx))
         σ[1,2] = real(dot(vx, inverse_times * vy))

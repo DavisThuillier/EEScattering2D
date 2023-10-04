@@ -131,6 +131,9 @@ module FermiSurfaceMesh
         return SVector{2}([df_x, df_y] / (2 * dp))
     end
 
+    """
+        fill_fermi_velocity!(fermi_velocity, fermi_surface, hamiltonian)
+    """
     function fill_fermi_velocity!(fermi_velocity::Vector{SVector{2, Float64}}, fermi_surface::Vector{SVector{2, Float64}}, hamiltonian::Function)
         for i in eachindex(fermi_surface)
             fermi_velocity[i] = gradient(hamiltonian, fermi_surface[i])
@@ -138,6 +141,9 @@ module FermiSurfaceMesh
         return nothing
     end
 
+    """
+        get_arclengths(curve)
+    """
     function get_arclengths(curve::Vector{SVector{2, Float64}})
         arclengths = Vector{Float64}(undef, length(curve) + 1)
         arclengths[1] = 0.0
@@ -151,11 +157,16 @@ module FermiSurfaceMesh
         return arclengths
     end
 
+    """
+        get_perimeter(curve)
+    """
     function get_perimeter(curve::Vector{SVector{2, Float64}})
         return last(get_arclengths(curve))
     end
 
-    "Assuming the curve is closed."
+    """
+        get_ds(curve)
+    """
     function get_ds(curve::Vector{SVector{2, Float64}})
         ds = Vector{Float64}(undef, length(curve))
         if length(curve) > 1
@@ -169,6 +180,9 @@ module FermiSurfaceMesh
         return ds
     end
 
+    """
+        secant_method(f, x0, x2, iterations, precision)
+    """
     function secant_method(f::Function, x0::Float64, x1::Float64, iterations::Int, precision::Float64)
         x2::Float64 = 0.0
         for i in 1:iterations
@@ -179,6 +193,9 @@ module FermiSurfaceMesh
         return x2
     end
 
+    """
+        minimum_binary_search(list, target)
+    """
     function minimum_binary_search(list::Vector{Float64}, target::Float64)
         left = 1
         right = length(list)
@@ -195,6 +212,9 @@ module FermiSurfaceMesh
         return max(right, 1), min(left, length(list))
     end
 
+    """
+        get_momentum(fermi_surface, arclengths, s)
+    """
     function get_momentum(fermi_surface::Vector{SVector{2,Float64}}, arclengths::Vector{Float64}, s::Float64)
         # i, j = mod.(minimum_binary_search(arclengths, s) .- 1, length(fermi_surface)) .+ 1
         i, j = minimum_binary_search(arclengths, s)
@@ -206,7 +226,7 @@ module FermiSurfaceMesh
     end
 
     """
-        cdf()
+        cdf(x, x0, locus, width, ratio)
     """
     cdf(x::Float64, x0::Float64, locus::Float64, width::Float64, ratio::Float64) = ((x - x0) / (width * sqrt(pi) * (ratio - 1)) + 0.5 * ( erf((x - locus) / width) - erf((x0 - locus) / width)) )
 
