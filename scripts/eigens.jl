@@ -43,6 +43,7 @@ end
 function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::Vector{SVector{2,Float64}})
     fs_norms = norm.(fs)
     sqrtspeeds = sqrt.(norm.(fv))
+    T_f = 6326.35
 
     thetas = map(x -> mod2pi(atan(x[2], x[1])), fs)
 
@@ -59,9 +60,9 @@ function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::V
     scale = 1.0
     maximum_index = 0
 
-    while maximum_index != 2
+    while i < 200
         
-        if abs(real(lambdas[i + 1]) - real(lambdas[i])) / abs(real(lambdas[i])) < 1e-2
+        if abs(real(lambdas[i + 1]) - real(lambdas[i])) / abs(real(lambdas[i])) < 1e-3
             w1, w2 = mirror_symmetrize([eigenvecs[:, i], eigenvecs[:, i + 1]], div(matrix_dim, 4) + 1)
             i += 1
             skip = true
@@ -83,44 +84,64 @@ function display_modes(lambdas, eigenvecs, fs::Vector{SVector{2,Float64}}, fv::V
         end
 
         
-        isodd(maximum_index) ? push!(odd_modes, (i, maximum_index)) : push!(even_modes, (i, maximum_index)) 
+        if isodd(maximum_index)
+            !(maximum_index ∈ last.(odd_modes)) && push!(odd_modes, (i, maximum_index))
+        else
+            !(maximum_index ∈ last.(even_modes)) && push!(even_modes, (i, maximum_index))
+        end
         if skip
-            isodd(maximum_index) ? push!(odd_modes, (i-1, maximum_index)) : push!(even_modes, (i-1, maximum_index))
+            if isodd(maximum_index)
+                !(maximum_index ∈ last.(odd_modes)) && push!(odd_modes, (i-1, maximum_index))
+            else
+                !(maximum_index ∈ last.(even_modes)) && push!(even_modes, (i-1, maximum_index))
+            end
         end
 
 
         println("Eigenvector ", i)
-        println("lambda = ", round(lambdas[i] - lambdas[1], digits = 5), "; maximal contribution: m = ", maximum_index)
-        if maximum_index in [1, 3, 5]
-            @show abs(fft(w1, 1))
-            @show abs(fft(w1, 3))
-            @show abs(fft(w1, 5))
+        println("lambda = ", round(lambdas[i], digits = 5), "; maximal contribution: m = ", maximum_index)
+        if isodd(maximum_index) && i < 17
+            @show fft(w1, 1)
+            @show fft(w1, 3)
+            @show fft(w1, 5)
         end
         println()
 
-        f = Figure(fontsize = 24)
-        ax = PolarAxis(f[1,1], title = latexstring("\$ \\lambda = $(round(lambdas[i], digits = 5)) , \\mathrm{mode} \\approx $(maximum_index) \$"), rlimits = (0.0, 0.55), thetaticklabelsvisible = false)
-        lines!(ax, thetas, fs_norms, color = :blue)
-        lines!(ax, thetas, fs_norms .+ (real.(w1) ./ sqrtspeeds), color = :green)
-        display(f)
+        # f = Figure(fontsize = 24)
+        # ax = PolarAxis(f[1,1], title = latexstring("\$ \\lambda = $(round(-lambdas[i], digits = 5)) \\,\\mathrm{ps}^{-1}, m \\approx $(maximum_index) \$"), rlimits = (0.0, 0.55), thetaticklabelsvisible = false)
+        # lines!(ax, thetas, fs_norms, color = :blue)
+        # lines!(ax, thetas, fs_norms .+ (real.(w1) ./ sqrtspeeds), color = :green)
+        # display(f)
         
         i += 1
     end
 
-    spectrum_fig = Figure()
-    spectrum_ax = Axis(spectrum_fig[1,1])
-    scatter!(spectrum_ax, first.(odd_modes), map(x -> lambdas[x], first.(odd_modes)), label = "Odd Modes")   
-    scatter!(spectrum_ax, first.(even_modes), map(x -> lambdas[x], first.(even_modes)), label = "Even Modes")
-    axislegend(spectrum_ax)
+    spectrum_fig = Figure(fontsize = 24)
+    spectrum_ax = Axis(spectrum_fig[1,1],title = latexstring("\$\\gamma\$ Band, \$(T = $(round(temperature * T_f, digits = 2)) \\, \\mathrm{K})\$"), ylabel = L"\lambda (\mathrm{ps}^{-1})", xticksvisible = false)
+    scatter!(spectrum_ax, first.(odd_modes), map(x -> -lambdas[x], first.(odd_modes)), label = "Odd Mode")   
+    scatter!(spectrum_ax, first.(even_modes), map(x -> -lambdas[x], first.(even_modes)), label = "Even Mode")
+    axislegend(spectrum_ax, valign = :bottom)
     display(spectrum_fig) 
-    # spectrum = plot(first.(odd_modes), map(x -> lambdas[x], first.(odd_modes)), seriestype = :scatter, label = "Odd Modes")
-    # plot!(spectrum, first.(even_modes), map(x -> lambdas[x], first.(even_modes)), seriestype = :scatter, label = "Even Modes")
-    # display(spectrum)
+
+    odd_even_fig = Figure(fontsize = 24)
+    odd_even_ax = Axis(odd_even_fig[1,1], ylabel = L"\lambda (\mathrm{ps}^{-1})", xlabel = L"m")
+    if band == "gamma"
+        odd_even_ax.title = latexstring("\$\\gamma\$ Band, \$(T = $(round(temperature * T_f, digits = 2)) \\, \\mathrm{K})\$")
+        odd_even_ax.xlabel = latexstring("Maximal Harmonic Contribution \$(m)\$")
+    elseif band == "free"
+        title = latexstring("2DEG \$(T = $(temperature) T_F)\$")
+    end
+
+    scatter!(odd_even_ax, last.(odd_modes), map(x -> -lambdas[x], first.(odd_modes)), label = "Odd Mode")   
+    scatter!(odd_even_ax, last.(even_modes), map(x -> -lambdas[x], first.(even_modes)), label = "Even Mode")
+    axislegend(odd_even_ax, valign = :bottom)
+    display(odd_even_fig) 
 end
 
 function main()
     include("params/data_dir.jl")
     @show data_dir
+    T_f = 6326.35
 
     if isfile(s_matrix_file)
         full_matrix::Matrix{Float64} = readdlm(s_matrix_file, ',', Float64)
@@ -129,16 +150,25 @@ function main()
         fs = SVector{2}.(fermi.kx, fermi.ky)
         fv = SVector{2}.(fermi.vx, fermi.vy)
 
+        # n = 9
+        # weights = zeros(ComplexF64, n)
+        # normv = norm(fermi.vx)
+        # for m in 1:n
+        #     weights[m] = fft(fermi.vx / normv, m)
+        #     @show round(weights[m], digits = 6)
+        # end
+    
         arclengths = FermiSurfaceMesh.get_arclengths(fs)
         perimeter  = last(arclengths)
         pop!(arclengths)
 
-        fig = Figure(fontsize=36, resolution = (1000, 1000))
-        ax = Axis(fig[1,1], xlabel = L"s_1", ylabel = L"s_2", title = latexstring("\$T/T_F = $(round(temperature, digits = 8))\$"))
+        fig = Figure(fontsize=30, resolution = (1000, 1000))
+        ax = Axis(fig[1,1], xlabel = L"s_1 / (2\pi / a)", ylabel = L"s_2 / (2\pi / a)")
+        ax.title = latexstring("\$T = $(round(temperature * T_f, digits = 2)) \\, \\mathrm{K}\$")
 
         scale = ReversibleScale(x -> atan(x), x -> tan(x))
-        hm = heatmap!(ax, arclengths, arclengths, full_matrix, colormap = :lisbon, colorscale = scale, colorrange = (-0.5e-6,1e-6))
-        Colorbar(fig[:,end+1], hm)
+        hm = heatmap!(ax, arclengths, arclengths, full_matrix * 5.25e3, colormap = :lisbon, colorscale = scale, colorrange = (-3e-4,9e-4))
+        Colorbar(fig[:,end+1], hm, label = L"̌\check \xi", labelrotation = pi/2)
         
         display(fig)
 

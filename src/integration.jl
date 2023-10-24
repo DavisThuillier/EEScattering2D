@@ -119,10 +119,10 @@ module FermiSurfaceIntegration
         return nothing
     end
 
-    function contracted_integral(s1::Float64, s2::Float64, uniform_fs::Vector{SVector{2,Float64}}, s_num::Int, t_num::Int, hamiltonian::Function, T::Float64, q_squared::Float64; umklapp = true)
+    function contracted_integral(s1::Float64, s2::Float64, uniform_fs::Vector{SVector{2,Float64}}, s_num::Int, t_num::Int, hamiltonian::Function, T::Float64, q_squared::Float64; umklapp = true, bz = true)
         integral::SVector{2,Float64} = [0.0,0.0]
 
-        integration_mesh, mesh_dVs, mesh_variance, _ , loci_indices = FermiSurfaceMesh.discretize(uniform_fs, s_num, t_num, [s1, s2], hamiltonian, T)
+        integration_mesh, mesh_dVs, mesh_variance, _ , loci_indices = FermiSurfaceMesh.discretize(uniform_fs, s_num, t_num, [s1, s2], hamiltonian, T, bz = bz)
         energies = hamiltonian.(integration_mesh) 
 
         for i in 2:(t_num-1)

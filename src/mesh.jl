@@ -421,7 +421,7 @@ module FermiSurfaceMesh
     function temperature_broaden(fermi_surface::Vector{SVector{2, Float64}}, fermi_velocity::Vector{SVector{2, Float64}}, hamiltonian::Function, perp_num::Int, T::Float64, precision::Float64 = 0.001; bz::Bool = true)
         e_max::Float64 = 2  * T * acosh(1 / (2 * sqrt(precision)))
 
-        iseven(perp_num) && (perpnum += 1)
+        iseven(perp_num) && (perp_num += 1)
 
         momenta = Matrix{SVector{2, Float64}}(undef, perp_num, length(fermi_surface))
 
@@ -500,8 +500,6 @@ module FermiSurfaceMesh
         for i in eachindex(loci)
             comp = loci[i] < arclengths[end] - perimeter ? loci[i] + perimeter : loci[i] # Value to compare is locus mapped into domain of arclengths
             j1, j2 = minimum_binary_search(arclengths, comp)
-            # Δ1 = abs(mod(arclengths[j1] - comp, perimeter))
-            # Δ2 = abs(mod(arclengths[j2] - comp, perimeter))
             Δ1 = abs(arclengths[j1] - comp)
             Δ2 = abs(arclengths[j2] - comp)
             loci_indices[i] = Δ1 < Δ2 ? j1 : j2
@@ -510,27 +508,5 @@ module FermiSurfaceMesh
         return momenta, dVs, variance, arclengths, loci_indices
     end
 
-    
-    # function endpoint_gaussian_mesh(a::Real, b::Real, N::Int, amplitude_ratio::Real, width::Real)
-    #     b < a && ((a, b) = (b, a))
-    
-    #     amp = (N/ 4.0 - 1) / cdf((b - a) / 4.0, 0.0, 0.0, width, amplitude_ratio)
-        
-    #     mesh = [a]
-    #     domain = LinRange(0.0, (b - a) / 4.0, 100 * Int(N * amplitude_ratio))
-
-    #     integrated_n = cdf.(domain, first(domain), first(domain), amp, width, amplitude_ratio)
-    #     n::Int = 0
-    #     for j in eachindex(integrated_n)
-    #         j == 1 && continue
-    #         if integrated_n[j] > n
-    #             push!(mesh, a + domain[j] + (n - integrated_n[j - 1]) * (domain[j] - domain[j - 1]) / (integrated_n[j] - integrated_n[j - 1])) 
-    #             n += 1
-    #         end
-    #     end
-    #     mesh = vcat(mesh, [(3 * a + b) / 4.0], reverse((3*a + b)/2.0 .- mesh))
-    #     # return mesh
-    #     return vcat(mesh, reverse((a + b) .- mesh)[2:end])
-    # end
 
 end

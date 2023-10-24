@@ -18,7 +18,7 @@ function create_files(temperature::Float64, num_bins::Int, perp_num::Int, num_sa
     data_dir_stem = joinpath(@__DIR__, "..", "data", "$(band)_band", "$(round(temperature, digits = 8))", "$(num_bins)x$(perp_num)_$(num_samples)")
     data_dir = data_dir_stem
 
-    filenames = map(x -> "Γ_$(x)_$(row_dim)_$(round(temperature, digits = 8)).csv", ["ξ", "s"]) 
+    filenames = map(x -> "Γ_$(x)_$(row_dim)_$(round(temperature, digits = 8)).csv", ["s"]) 
 
     # Check if any of the output files exist in the desired directory
     j = 0
@@ -41,14 +41,6 @@ function create_files(temperature::Float64, num_bins::Int, perp_num::Int, num_sa
 end
 
 function main()
-    if band == "free"
-        umklapp = false
-        bz = false
-    else
-        umklapp = true
-        bz = true
-    end
-
     data_dir, outfiles = create_files(temperature, num_bins, perp_num, sym_num, row_dim)
 
     fs = FermiSurfaceMesh.generate_fermi_surface(hamiltonian, row_dim, bz = bz) # Uniform Fermi Surface
@@ -79,13 +71,10 @@ function main()
     end
     amp_ratio = 8.0
 
-    ###########################
-    ## Center-of-mass meshes ##
-    ###########################
+    s1 = 0.0
+    for i in 
+        Γ_s[i,j] = prefactor * sum(FermiSurfaceIntegration.contracted_integral(s1, s2, fs, num_bins, perp_num, hamiltonian, temperature, q_squared, umklapp = umklapp, bz = false))
 
-    asym_mesh = FermiSurfaceMesh.com_gaussian_mesh(-perimeter/2, perimeter/2, num_bins, FermiSurfaceMesh.collinear_width(temperature, perimeter), amp_ratio) / sqrt(2) # Mesh for ξ2 ≡ (s1 - s2) / √2
-    sym_mesh = collect(LinRange(0.0,perimeter*sqrt(2), sym_num))  # Mesh for ξ1 ≡ (s1 + s2) / √2
-    asym_num = length(asym_mesh)
     
     s1::Float64 = 0.0
     s2::Float64 = 0.0
@@ -149,7 +138,6 @@ include(joinpath(@__DIR__, "params", "$(band).jl"))
 const temperature = parse(Float64, ARGS[2]) # In units of T/T_F
 const num_bins    = parse(Int,     ARGS[3]) # Number of s_values in integration mesh
 const perp_num    = parse(Int,     ARGS[4]) # Number of t_values (along v_f) in integration mesh
-const sym_num     = 4 * (parse(Int,ARGS[5]) ÷ 4) + 1 # Samples of ξ1 ≡ (s1 + s2)/√2 to be used enforced to be odd and (sym_num-1) divisible by 4
 const row_dim     = 4 * (parse(Int,ARGS[6]) ÷ 4) # Dimension of interpolated output matrix enforced to be divisible by 4
 
 main()
