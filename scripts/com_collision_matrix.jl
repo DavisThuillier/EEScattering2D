@@ -36,7 +36,6 @@ function create_files(temperature::Float64, num_bins::Int, perp_num::Int, num_sa
         end
     end
     
-    
     return data_dir, filenames
 end
 
@@ -84,7 +83,7 @@ function main()
     ###########################
 
     asym_mesh = FermiSurfaceMesh.com_gaussian_mesh(-perimeter/2, perimeter/2, num_bins, FermiSurfaceMesh.collinear_width(temperature, perimeter), amp_ratio) / sqrt(2) # Mesh for ξ2 ≡ (s1 - s2) / √2
-    sym_mesh = collect(LinRange(0.0,perimeter*sqrt(2), sym_num))  # Mesh for ξ1 ≡ (s1 + s2) / √2
+    sym_mesh = collect(LinRange(0.0,perimeter*sqrt(2) / 4, sym_num))  # Mesh for ξ1 ≡ (s1 + s2) / √2
     asym_num = length(asym_mesh)
     
     s1::Float64 = 0.0
@@ -98,6 +97,7 @@ function main()
             Γ_ξ[i,j] = prefactor * sum(FermiSurfaceIntegration.contracted_integral(s1, s2, fs, num_bins, perp_num, hamiltonian, temperature, q_squared, umklapp = umklapp, bz = bz)) # Sums the normal and umklapp contributions
         end
     end
+    # Γ_ξ = hcat([Γ_ξ, Γ_ξ, Γ_ξ, Γ_ξ])
 
     open(outfiles[1], "w") do file
         writedlm(file, Γ_ξ, ",")
@@ -122,7 +122,7 @@ function main()
             ξ2 = (s1 - s2) / sqrt(2)
 
             ξ2 = mod(ξ2 + perimeter * sqrt(2) / 4, perimeter * sqrt(2) / 2) - perimeter * sqrt(2) / 4
-            ξ1 = mod(ξ1, perimeter * sqrt(2))
+            ξ1 = mod(ξ1, perimeter * sqrt(2) / 4) # Map to quarter region of ξ1, since there is fourfold rotational symmetry
 
             Γ_s[i,j] = sym_factor[i] * sym_factor[j] * etp.(ξ2, ξ1)
         end

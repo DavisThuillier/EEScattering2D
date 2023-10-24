@@ -6,6 +6,7 @@ using DataFrames
 using CSV
 import StaticArrays: SVector
 using Statistics
+using CurveFit
 
 
 function main()
@@ -15,8 +16,8 @@ function main()
         full_matrix::Matrix{Float64} = readdlm(s_matrix_file, ',', Float64)
         fermi = CSV.read(fs_filename, DataFrames.DataFrame)
 
-        T_F = 6326.35
-        println("T = ", temperature * T_F)
+        T_f = 6326.35
+        println("T = ", temperature * T_f)
 
         fs = SVector{2}.(fermi.kx, fermi.ky)
         ds = mean(FermiSurfaceMesh.get_ds(fs))
@@ -30,8 +31,9 @@ function main()
 
         eigenvecs = reverse(eigvecs(full_matrix), dims = 2)
 
-        vx = Vector{ComplexF64}(undef, length(lambdas))
-        vy = Vector{ComplexF64}(undef, length(lambdas))
+        n = 100
+        vx = Vector{ComplexF64}(undef, n)
+        vy = Vector{ComplexF64}(undef, n)
         sqrt_speeds = sqrt.(norm.(fv) ./ ds)
         for i in eachindex(vx)
             vx[i] = dot(fermi.vx ./ sqrt_speeds, eigenvecs[:, i]) / dot(eigenvecs[:, i], eigenvecs[:, i])
@@ -42,7 +44,13 @@ function main()
         vx[1] = 0.0
         vy[1] = 0.0
 
-        inverse_times = diagm(1 ./ lambdas)
+        fig = Figure(fontsize = 24)
+        ax = Axis(fig[1,1],title = latexstring("\$\\gamma\$ Band, \$(T = $(round(temperature * T_f, digits = 2)) \\, \\mathrm{K})\$"), ylabel = L"|\langle j_x | \eta_m \rangle|^2", xlabel = L"m", xticksvisible = false)
+        xlims!(ax, 0, 400)
+        scatter!(ax, abs.(vx).^2, markersize = 5.0)   
+        display(fig) 
+
+        inverse_times = diagm(1 ./ lambdas[1:n])
         inverse_times[1,1] = 0.0
 
         σ[1,1] = real(dot(vx, inverse_times * vx))
@@ -62,6 +70,6 @@ function main()
 end
 
 include("params/data_dir.jl")
-include("params/$(band).jl")
+include("params/gamma.jl")
 
 main()
